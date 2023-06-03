@@ -1,0 +1,21 @@
+{
+    "files.exclude": {
+        "datasets": true,
+        "dystream": true,
+        "lib": true,
+        "configs": true,
+        // "dyrecon/runs": true,
+        // "dystream/processors": true,
+        "**/__pycache__/**": true
+    },
+    "files.watcherExclude": {
+        "/work_dir/**": true,
+        "/dyrecon/load/**": true,
+        "/dyrecon/runs/**": true,
+        "/dyrecon/exp/**": true,
+        "datasets": true,
+    }//,
+    // "python.analysis.extraPaths": [
+    //     "lib"
+    // ]
+}
