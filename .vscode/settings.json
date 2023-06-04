@@ -1,6 +1,6 @@
 {
     "files.exclude": {
-        "datasets": true,
+        // "datasets": true,
         "dystream": true,
         "lib": true,
         "configs": true,
@@ -11,8 +11,7 @@
     "files.watcherExclude": {
         "/work_dir/**": true,
         "/dyrecon/load/**": true,
-        "/dyrecon/runs/**": true,
-        "/dyrecon/exp/**": true,
+        "/exp/**": true,
         "datasets": true,
     }//,
     // "python.analysis.extraPaths": [

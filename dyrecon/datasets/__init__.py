@@ -13,4 +13,4 @@ def make(name, config):
     return dataset
 
 
-from . import dysurf_dataset, dycheck_parser
+from . import dycheck_parser, dysdf_dataset, dysurf_dataset

@@ -19,13 +19,15 @@ class BaseModel(nn.Module):
     def update_step(self, epoch, global_step):
         pass
     
-    def train(self, mode=True):
-        self.randomized = mode and self.config.randomized
-        return super().train(mode=mode)
+    def log_variables(self):
+        return dict()
+    # def train(self, mode=True):
+    #     self.randomized = mode and self.config.model.sampling.randomized
+    #     return super().train(mode=mode)
     
-    def eval(self):
-        self.randomized = False
-        return super().eval()
+    # def eval(self):
+    #     self.randomized = False
+    #     return super().eval()
 
     def regularizations(self, out):
         return {}

@@ -136,5 +136,4 @@ dmypy.json
 /work_dirs/
 submodules/
 .virtual_documents/
-dyrecon/runs
-dyrecon/exp
+/exp

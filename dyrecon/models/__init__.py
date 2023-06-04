@@ -12,4 +12,4 @@ def make(name, config):
     model = models[name](config)
     return model
 
-from . import dynerf
+from . import dynerf, dysdf, fields

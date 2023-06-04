@@ -41,98 +41,64 @@ def parse_cam(scale_mats_np, world_mats_np):
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
 
 class DySDFDatasetBase():
-    def __init__(self, config):
+    def setup(self, config, camera_list):
         # self.config = config
-        self.rank = get_rank()
-
         print('Load data: Begin')
         load_time_steps = config.get('load_time_steps', 100000)
         # data_ids = config.get(f'{split}_ids', -1)
         def _sample(data_list: list):
             ret = data_list #if data_ids == -1 else [data_list[i] for i in data_ids]
             return ret[:load_time_steps]
-        data_dir = config.root_dir
+        
+        _all_c2w, _all_images, _all_fg_masks, _frame_ids, _directions = [], [], [], [], []
+        for cam_dir in camera_list:
+            data_dir = os.path.join(config.data_root, cam_dir)
+            if not os.path.exists(data_dir):
+                raise FileNotFoundError(data_dir)
 
-        _images_lis = sorted(glob(os.path.join(data_dir, 'rgb/*.png')))  
-        _camera_dict = np.load(os.path.join(data_dir, 'cameras_sphere.npz'))
-        # world_mat is a projection matrix from world to image
-        world_mats_np = _sample([_camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))])
-        # scale_mat: used for coordinate normalization, we assume the scene to render is inside a unit sphere at origin.
-        scale_mats_np = _sample([_camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))])
-        intrinsics_all, pose_all = parse_cam(scale_mats_np, world_mats_np)
+            _images_lis = sorted(glob(os.path.join(data_dir, 'rgb/*.png')))  
+            _camera_dict = np.load(os.path.join(data_dir, 'cameras_sphere.npz'))
+            world_mats_np = _sample([_camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))]) # world_mat is a projection matrix from world to image
+            scale_mats_np = _sample([_camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))]) # scale_mat: used for coordinate normalization, we assume the scene to render is inside a unit sphere at origin.
+            intrinsics_all, pose_all = parse_cam(scale_mats_np, world_mats_np)
 
-        images_lis = _sample(_images_lis)
-        masks_lis = _sample(sorted(glob(os.path.join(data_dir, 'mask/*.png'))))
+            images_lis = _sample(_images_lis)
+            masks_lis = _sample(sorted(glob(os.path.join(data_dir, 'mask/*.png'))))
 
-        images = torch.from_numpy(np.stack([cv.imread(im_name)[..., ::-1] for im_name in images_lis]) / 256.0)  # [n_images, H, W, 3]
-        masks  = torch.from_numpy(np.stack([cv.imread(im_name) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
-        # intrinsics_all_inv = torch.inverse(intrinsics_all)  # [n_images, 4, 4]
+            images = torch.from_numpy(np.stack([cv.imread(im_name)[..., ::-1] for im_name in images_lis]) / 256.0)  # [n_images, H, W, 3]
+            masks  = torch.from_numpy(np.stack([cv.imread(im_name) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
+            # intrinsics_all_inv = torch.inverse(intrinsics_all)  # [n_images, 4, 4]
 
-        self.h, self.w = images.shape[1], images.shape[2]
-        self.image_pixels = self.H * self.W
+            all_c2w = pose_all.float()[:, :3, :4]
+            all_images = images.float()
+            all_fg_masks = (masks > 0)[..., 0].float()
+            all_images = all_images*all_fg_masks[..., None].float()
 
-        print('Load data: End')
-        self.all_c2w = pose_all.float().to(self.rank)[:, :3, :4]
-        self.all_images = images.float().to(self.rank)
-        self.all_fg_masks = (masks > 0).to(self.rank)[..., 0].float()
-        self.all_images = self.all_images*self.all_fg_masks[..., None].float()
+            self.h, self.w = all_images.shape[1:-1]
+            frame_ids = torch.tensor(list(range(all_images.shape[0]))).long()
 
-        self.h, self.w = self.all_images.shape[1:-1]
-        self.time_ids = torch.tensor(list(range(self.all_images.shape[0]))).to(self.rank).long()
-        self.near = None
-        self.far = None
+            self.h, self.w = images.shape[1], images.shape[2]
+            directions = get_ray_directions(self.h, self.w, intrinsics_all[0]) # (h, w, 3)
+            directions = directions.unsqueeze(0).repeat(all_images.shape[0], 1, 1, 1) # [n_images, h, w, 3]
+            
+            _all_c2w.append(all_c2w)
+            _all_images.append(all_images)
+            _all_fg_masks.append(all_fg_masks)
+            _frame_ids.append(frame_ids)
+            _directions.append(directions)
 
-        self.directions = get_ray_directions(self.h, self.w, intrinsics_all[0]).to(self.rank) # (h, w, 3)
+        rank = get_rank()
+        self.all_c2w = torch.cat(_all_c2w, dim=0).to(rank)
+        self.all_images = torch.cat(_all_images, dim=0).to(rank)
+        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(rank)
+        self.frame_ids = torch.cat(_frame_ids, dim=0).to(rank)
+        self.directions = torch.cat(_directions, dim=0).to(rank)
+        self.image_pixels = self.h * self.w
+        self.time_max = frame_ids.max() + 1
+        print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.all_fg_masks.shape, self.frame_ids.shape, self.directions.shape)
 
-        self.aabb = torch.tensor([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]).to(self.rank)
-        if os.path.exists(os.path.join(data_dir, 'aabb.npy')):
-            self.aabb = torch.from_numpy(np.load(os.path.join(data_dir, 'aabb.npy'))).to(self.rank)
-
-        print('SHAPES:', self.all_c2w.shape, self.all_images.shape, self.all_fg_masks.shape, self.directions.shape)
-
-    @staticmethod
-    def merge_datasets(ds_list: list):
-        if len(ds_list) == 1:
-            return ds_list[0]
-
-        attr_list = [
-            'all_c2w', 'all_images', 'all_fg_masks', 'time_ids', 'directions', 
-        ]
-
-        ds = ds_list[0]
-        for attr in attr_list:
-            val_list = [getattr(_d, attr) for _d in ds_list]
-            if isinstance(val_list[0], list) or isinstance(val_list[0], np.ndarray) or torch.is_tensor(val_list[0]):
-                val = vector_cat(val_list, dim=0)
-            elif isinstance(val_list[0], dict):
-                val = {k: vector_cat([v[k] for v in val_list]) for k in val_list[0].keys()}
-            elif val_list[0] is None:
-                val = None
-            else:
-                raise NotImplementedError
-            setattr(ds, attr, val)
-        ds.n_views = len(ds_list)
-        ds.n_images = ds.images_np.shape[0]
-        return ds
-
-    @classmethod
-    def from_conf(cls, conf):
-        train_cam_list = conf.train_cam_list
-        val_cam = conf.val_cam
-
-        # create a list of datasets
-        train_ds_list = [DySDFDatasetBase(conf, os.path.join(conf.data_dir, train_cam)) for train_cam in train_cam_list]
-        if isinstance(val_cam, list):
-            val_ds_list = [DySDFDatasetBase(conf, os.path.join(conf.data_dir, _vc)) for _vc in val_cam]
-            val_ds = DySDFDatasetBase.merge_datasets(val_ds_list)
-        else:
-            val_ds = DySDFDatasetBase(conf, os.path.join(conf.data_dir, val_cam))
-
-        # merge datasets
-        train_ds = DySDFDatasetBase.merge_datasets(train_ds_list)
-
-        return train_ds, val_ds
-
+    def frame_id_to_time(self, frame_id):
+        return (frame_id / self.time_max) * 2.0 - 1.0 # range of (-1, 1)
 
 class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
     def __init__(self, config, split):
@@ -193,7 +159,12 @@ class DySDFDataModule(pl.LightningDataModule):
 
     @staticmethod
     def get_metadata(config):
-        return dict()
+        aabb = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
+        if os.path.exists(os.path.join(config.data_root, 'aabb.npy')):
+            aabb = np.loadtxt(os.path.join(config.data_root, 'aabb.npy')).tolist()
+        return {
+            'scene_aabb': aabb,
+        }
         # return {
         #     'near': 0.1, 'far': 5.0,
         #     'time_max': 100,

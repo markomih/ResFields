@@ -1,10 +1,8 @@
-import argparse
 import os
 import time
 import logging
+import argparse
 from datetime import datetime
-import torch
-import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', required=True, help='path to config file')
@@ -20,20 +18,10 @@ group.add_argument('--validate', action='store_true')
 group.add_argument('--test', action='store_true')
 group.add_argument('--predict', action='store_true')
 
-parser.add_argument('--exp_dir', default='./exp')
-parser.add_argument('--runs_dir', default='./runs')
+parser.add_argument('--exp_dir', default='../exp')
 parser.add_argument('--verbose', action='store_true', help='if true, set logging level to DEBUG')
 
 args, extras = parser.parse_known_args()
-
-# set CUDA_VISIBLE_DEVICES then import pytorch-lightning
-if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'    
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-ARGS_GPU = os.environ['CUDA_VISIBLE_DEVICES'] if args.gpu == '-1' else args.gpu
-os.environ['CUDA_VISIBLE_DEVICES'] = ARGS_GPU
-gpu_list = ARGS_GPU.split(',')
-n_gpus = len(gpu_list)
 
 import datasets
 import systems
@@ -87,7 +75,7 @@ def main():
     loggers = []
     if args.train:
         loggers += [
-            pl.loggers.TensorBoardLogger(args.runs_dir, name=config.name, version=config.trial_name),
+            pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name),
         ]
     
     trainer = pl.Trainer(
@@ -120,4 +108,12 @@ def main():
 
 
 if __name__ == '__main__':
+    # set CUDA_VISIBLE_DEVICES then import pytorch-lightning
+    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0'    
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    ARGS_GPU = os.environ['CUDA_VISIBLE_DEVICES'] if args.gpu == '-1' else args.gpu
+    os.environ['CUDA_VISIBLE_DEVICES'] = ARGS_GPU
+    gpu_list = ARGS_GPU.split(',')
+    n_gpus = len(gpu_list)
     main()
