@@ -159,19 +159,18 @@ hyper_net_dict = {
 class DynamicNeRF(BaseModel):
     def setup(self):
      
-        self.time_max = self.config.metadata.time_max
+        # self.time_max = self.config.metadata.time_max
         self.N_samples = self.config.sampling.N_samples
         self.N_importance = self.config.sampling.N_importance
+        self.randomized = self.config.sampling.randomized
+        self.background_color = None
+        assert self.config.background == 'black', 'Only support black background.'
 
         self.register_buffer('scene_aabb', torch.as_tensor(self.config.metadata.scene_aabb, dtype=torch.float32))
         
         range = (self.scene_aabb[3:6] - self.scene_aabb[:3]).max().item()
         self.raw_noise_std = range/self.N_samples
-
-        self.randomized = self.config.randomized
-        self.background_color = None
         
-        assert self.config.background == 'black'
 
         # create networks
         self.ambient_dim = self.config.get('ambient_dim', 0)

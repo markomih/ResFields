@@ -1,10 +1,10 @@
 import torch
 import models
-from models.base import BaseModel
-
-from models.utils import chunk_batch_levels
-from nerfacc import ray_aabb_intersect
 import torch.nn.functional as F
+
+from models.base import BaseModel
+from models.utils import chunk_batch_levels
+from models.utils import ray_bbox_intersection
 
 @models.register('DySDF')
 class DySDF(BaseModel):
@@ -90,17 +90,15 @@ class DySDF(BaseModel):
             'normal_map': torch.zeros_like(rays_o),
             'depth_map': torch.zeros_like(rays_o[:, :1]),
         }
-
         # sample points for volume rendering
         render_step_size = self.get_render_step_size()
         with torch.no_grad():
-            near, far = ray_aabb_intersect(rays_o, rays_d, self.scene_aabb) # n_rays
-            print('FAR?MIN', (near.min(), near.max()), (far.min(), far.max()))
-            inside_rays = near != far
+            near, far, inside_rays = ray_bbox_intersection(self.scene_aabb.view(2, 3), rays_o, rays_d) # n_rays
+            # near, far = ray_aabb_intersect(rays_o, rays_d, self.scene_aabb) # n_rays
             if not inside_rays.any():
                 to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
                 return to_ret
-            rays_o, rays_d, rays_time, frame_id, near, far = rays_o[inside_rays], rays_d[inside_rays], rays_time[inside_rays], frame_id[inside_rays], near[inside_rays], far[inside_rays]
+            rays_o, rays_d, rays_time, frame_id = rays_o[inside_rays], rays_d[inside_rays], rays_time[inside_rays], frame_id[inside_rays]
 
             z_vals = torch.linspace(0.0, 1.0, self.n_samples, device=rays_o.device) # n_rays
             z_vals = near.view(-1, 1) + (far - near).view(-1, 1) * z_vals.unsqueeze(0) # n_rays, n_samples

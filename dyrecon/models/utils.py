@@ -204,3 +204,50 @@ def extract_fields(bound_min, bound_max, resolution, query_func):
                     val = query_func(pts).reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy()
                     u[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = val
     return u
+
+def ray_bbox_intersection(bounds, orig, direct, boffset=(-0.01, 0.01)):
+    ''' Calculate the intersections of rays and the 3d bounding box. 
+    Adapted from KeypointNeRF (ECCV 2022)
+    Args:
+        bounds: (2, 3): min, max
+        orig: (N, 3): origin of rays
+        direct: (N, 3): direction of rays
+    return:
+        near (N - points outside the box): the start of the ray inside the box
+        far (N - points outside the box): the end of the ray inside the box
+        mask (N): whether the ray intersects the box
+    '''
+    bounds = bounds + torch.tensor([boffset[0], boffset[1]])[:, None].to(device=orig.device)
+    nominator = bounds[None] - orig[:, None] # N, 2, 3
+
+    # calculate the step of intersections at six planes of the 3d bounding box
+    direct = direct.detach().clone()
+    direct[direct.abs() < 1e-5] = 1e-5
+    d_intersect = (nominator / direct[:, None]).reshape(-1, 6)
+
+    # calculate the six interections
+    p_intersect = d_intersect[..., None] * direct[:, None] + orig[:, None]
+
+    # calculate the intersections located at the 3d bounding box
+    bounds = bounds.reshape(-1)
+    min_x, min_y, min_z, max_x, max_y, max_z = bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]
+    eps = 1e-6
+    p_mask_at_box = (p_intersect[..., 0] >= (min_x - eps)) * \
+                    (p_intersect[..., 0] <= (max_x + eps)) * \
+                    (p_intersect[..., 1] >= (min_y - eps)) * \
+                    (p_intersect[..., 1] <= (max_y + eps)) * \
+                    (p_intersect[..., 2] >= (min_z - eps)) * \
+                    (p_intersect[..., 2] <= (max_z + eps))
+
+    # obtain the intersections of rays which intersect exactly twice
+    mask_at_box = p_mask_at_box.sum(-1) == 2
+    p_intervals = p_intersect[mask_at_box][p_mask_at_box[mask_at_box]].reshape(-1, 2, 3)
+
+    # calculate the step of intersections
+    norm_ray = torch.linalg.norm(direct[mask_at_box], dim=1)
+    d0 = torch.linalg.norm(p_intervals[:, 0] - orig[mask_at_box], dim=1) / norm_ray
+    d1 = torch.linalg.norm(p_intervals[:, 1] - orig[mask_at_box], dim=1) / norm_ray
+    d01 = torch.stack((d0, d1), -1)
+    near = d01.min(-1).values
+    far = d01.max(-1).values
+    return near, far, mask_at_box

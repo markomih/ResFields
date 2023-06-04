@@ -160,8 +160,10 @@ class DySDFDataModule(pl.LightningDataModule):
     @staticmethod
     def get_metadata(config):
         aabb = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
-        if os.path.exists(os.path.join(config.data_root, 'aabb.npy')):
-            aabb = np.loadtxt(os.path.join(config.data_root, 'aabb.npy')).tolist()
+        if os.path.exists(os.path.join(config.data_root, 'aabb.txt')):
+            with open(os.path.join(config.data_root, 'aabb.txt'), 'r') as f:
+                aabb = f.read().strip()
+            aabb = eval(aabb)
         return {
             'scene_aabb': aabb,
         }

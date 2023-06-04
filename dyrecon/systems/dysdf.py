@@ -130,7 +130,8 @@ class DySDFSystem(BaseSystem):
 
         loss = sum(losses.values())
         self.log('train/loss', loss, prog_bar=True, rank_zero_only=True)
-        for key, val in self.model.log_variables():
+        _log_variables = self.model.log_variables()
+        for key, val in _log_variables.items():
             self.log(f'train/{key}', val, prog_bar=False, rank_zero_only=True)
 
         return {
