@@ -92,21 +92,3 @@ class CustomProgressBar(TQDMProgressBar):
         items = super().get_metrics(*args, **kwargs)
         items.pop("v_num", None)
         return items
-
-class NerfplayerCallback(Callback):
-    def __init__(self) -> None:
-        # self.system = system
-        pass
-
-    def on_train_batch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule, batch, batch_idx) -> None:
-        # return super().on_fit_end(trainer, pl_module)
-
-        # TODO NerfPlayer specific
-        if((batch_idx % 16 == 0) & (batch_idx < 5e2) |
-                (batch_idx % 1000 == 0) & (batch_idx > 5e2)):
-            pl_module.model.update_extra_state()
-        # pl_module.model.update_extra_state()
-
-        # self.system.update_extra_state()
-    def on_validation_epoch_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        return super().on_validation_epoch_start(trainer, pl_module)

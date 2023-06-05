@@ -60,13 +60,18 @@ def plot_heatmap(data: np.ndarray, min_val=-3, max_val=3, resize_ratio: int=2):
     img = cv2.resize(img, dsize=(img.shape[1]*resize_ratio, img.shape[0]*resize_ratio))
     return img
 
-def load_config(*yaml_files, cli_args=[]):
-    yaml_confs = [OmegaConf.load(f) for f in yaml_files]
+def load_config(yaml_file, cli_args=[]):
+    yaml_conf = OmegaConf.load(yaml_file)
+    if yaml_conf.defaults is not None:
+        dir_name = os.path.dirname(yaml_file)
+        defaults = [OmegaConf.load(os.path.join(dir_name, f)) for f in yaml_conf.defaults]
+        defaults = OmegaConf.merge(*defaults)
+        yaml_conf = OmegaConf.merge(defaults, yaml_conf)
+    
     cli_conf = OmegaConf.from_cli(cli_args)
-    conf = OmegaConf.merge(*yaml_confs, cli_conf)
+    conf = OmegaConf.merge(yaml_conf, cli_conf)
     OmegaConf.resolve(conf)
     return conf
-
 
 def config_to_primitive(config, resolve=True):
     return OmegaConf.to_container(config, resolve=resolve)

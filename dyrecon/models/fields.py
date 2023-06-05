@@ -70,7 +70,6 @@ def get_embedder(multires, input_dims=3):
 class SDFNetwork(BaseModel):
     def setup(self):
         self.n_frames = self.config.n_frames
-        self.independent_layers = self.config.independent_layers
         self.d_out = self.config.d_out
         self.d_in_1 = self.config.d_in_1
         self.d_in_2 = self.config.d_in_2
@@ -85,11 +84,8 @@ class SDFNetwork(BaseModel):
         self.weight_norm = self.config.weight_norm
         self.inside_outside = self.config.inside_outside
 
-        # get params
-        # self.n_frames = kwargs.get('n_frames', 100)
-        # self.independent_layers = kwargs.get('independent_layers', (1))
-        # self.composition_rank = kwargs.get('composition_rank', 10)
-
+        self.independent_layers = self.config.get('independent_layers', [])
+        self.composition_rank = self.config.get('composition_rank', 10)
         # create nets
         dims = [self.d_in_1 + self.d_in_2] + [self.d_hidden for _ in range(self.n_layers)] + [self.d_out]
 
@@ -180,7 +176,6 @@ class SDFNetwork(BaseModel):
 
                 if frame_id.numel() == 1:
                     x = F.linear(x, lin_w[frame_id.squeeze()], lin.bias)
-                    # x = (lin_w[frame_id.squeeze()] @ x.permute(1,0)).permute(1, 0) + lin.bias[None] # F_out,F_in @ F_in,N -> F_out,N -> N,F_out
                 else:
                     lin_w = lin_w[frame_id] # n_rays,F_out,F_in
                     x = lin_w @ x.permute(0, 2, 1) + lin.bias.view(1, -1, 1) # n_rays,F_out,F_in @ n_rays,F_in,N -> n_rays,F_out,N

@@ -27,7 +27,6 @@ import datasets
 import systems
 import pytorch_lightning as pl
 from utils.callbacks import ConfigSnapshotCallback, CustomProgressBar
-from utils.callbacks import NerfplayerCallback
 from utils.misc import load_config    
 
 def main():
@@ -65,11 +64,6 @@ def main():
                 config, config.config_dir, use_version=False
             ),
             CustomProgressBar(refresh_rate=50),
-        ]
-
-    if('nerfplayer-ngp' in config.name):
-        callbacks += [ 
-            NerfplayerCallback()
         ]
 
     loggers = []

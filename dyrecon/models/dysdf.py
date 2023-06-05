@@ -13,6 +13,7 @@ class DySDF(BaseModel):
         self.n_samples = self.config.sampling.n_samples
         self.n_importance = self.config.sampling.n_importance
         self.randomized = self.config.sampling.randomized
+        self.ray_chunk = self.config.sampling.ray_chunk
         self.background_color = None
         self.alpha_ratio = 1.0
         
@@ -58,13 +59,13 @@ class DySDF(BaseModel):
         if self.training:
             out = self.forward_(rays, **kwargs)
         else:
-            out = chunk_batch_levels(self.forward_, self.config.ray_chunk, rays, **kwargs)
+            out = chunk_batch_levels(self.forward_, self.ray_chunk, rays, **kwargs)
         return {
             **out,
         }
 
-    def forward_(self, rays, rays_time, frame_id, **kwargs):
-        rays_o, rays_d = rays[:, 0:3], rays[:, 3:6] # both (N_rays, 3)
+    def forward_(self, rays, frame_id, **kwargs):
+        rays_o, rays_d, rays_time = rays.split([3, 3, 1], dim=-1) #rays[:, 0:3], rays[:, 3:6] # both (N_rays, 3)
         renderings = self.volume_rendering(rays_o, rays_d, rays_time, frame_id)
         return dict(coarse=renderings)
 
@@ -88,7 +89,7 @@ class DySDF(BaseModel):
             'rgb': torch.zeros_like(rays_o),
             'opacity': torch.zeros_like(rays_o[:, :1]),
             'normal_map': torch.zeros_like(rays_o),
-            'depth_map': torch.zeros_like(rays_o[:, :1]),
+            'depth': torch.zeros_like(rays_o[:, :1]),
         }
         # sample points for volume rendering
         render_step_size = self.get_render_step_size()
@@ -98,7 +99,9 @@ class DySDF(BaseModel):
             if not inside_rays.any():
                 to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
                 return to_ret
-            rays_o, rays_d, rays_time, frame_id = rays_o[inside_rays], rays_d[inside_rays], rays_time[inside_rays], frame_id[inside_rays]
+            rays_o, rays_d, rays_time = rays_o[inside_rays], rays_d[inside_rays], rays_time[inside_rays]
+            if frame_id.numel() > 1:
+                frame_id = frame_id[inside_rays]
 
             z_vals = torch.linspace(0.0, 1.0, self.n_samples, device=rays_o.device) # n_rays
             z_vals = near.view(-1, 1) + (far - near).view(-1, 1) * z_vals.unsqueeze(0) # n_rays, n_samples
@@ -141,13 +144,13 @@ class DySDF(BaseModel):
         
         comp_rgb = (color * weights).sum(dim=1) # n_rays, 3
         opacity = weights.sum(dim=1) # n_rays, 1
-        depth_map = (weights*mid_z_vals.unsqueeze(-1)).sum(dim=1) # n_rays, 1
+        depth = (weights*mid_z_vals.unsqueeze(-1)).sum(dim=1) # n_rays, 1
         comp_normal = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
 
         to_ret['rgb'][inside_rays] = comp_rgb
         to_ret['opacity'][inside_rays] = opacity
         to_ret['normal_map'][inside_rays] = comp_normal
-        to_ret['depth_map'][inside_rays] = depth_map
+        to_ret['depth'][inside_rays] = depth
 
         if self.background_color is not None:
             to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])

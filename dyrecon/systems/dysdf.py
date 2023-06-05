@@ -26,7 +26,7 @@ class DySDFSystem(BaseSystem):
         if 'index' in batch: # validation / testing
             index = batch['index']
         else:
-            if self.sampling.batch_image_sampling:
+            if self.sampling.batch_image_sampling and stage in ['train']:
                 index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=self.dataset.all_images.device)
             else:
                 index = torch.randint(0, len(self.dataset.all_images), size=(1,), device=self.dataset.all_images.device)
@@ -44,29 +44,19 @@ class DySDFSystem(BaseSystem):
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
-            # if self.dataset.all_depths is not None:
-            #     batch['depth'] = self.dataset.all_depths[index, y, x].view(-1)
             batch['index'] = index
             batch['y'] = y
             batch['x'] = x
-            # if self.dataset.dynamic_pixel_masks is not None:
-            #     batch['dynamic_pixel_masks'] = self.dataset.dynamic_pixel_masks[index, y, x].view(-1)
         else:
-            c2w = self.dataset.all_c2w[index][0]
-            directions = self.dataset.directions #(H,W,3)
+            c2w = self.dataset.all_c2w[index].squeeze(0)
+            directions = self.dataset.directions[index].squeeze(0) #(H,W,3)
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index].view(-1)
-            # if self.dataset.all_depths is not None:
-            #     batch['depth'] = self.dataset.all_depths[index].view(-1)
-
-            # if self.dataset.covisible_masks is not None:
-            #     batch['covisible_masks'] = self.dataset.covisible_masks[index].view(-1)
-
-            # if self.dataset.dynamic_pixel_masks is not None:
-            #     batch['dynamic_pixel_masks'] = self.dataset.dynamic_pixel_masks[index].view(-1)
-        
-        rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1)], dim=-1)
+        rays_time = self.dataset.frame_id_to_time(frame_id).view(-1, 1)
+        if rays_time.shape[0] != rays_o.shape[0]:
+            rays_time = rays_time.expand(rays_o.shape[0], rays_time.shape[1])
+        rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
 
         if stage in ['train']:
             if self.config.model.background == 'white':
@@ -83,8 +73,7 @@ class DySDFSystem(BaseSystem):
         rgb = rgb * fg_mask[..., None] + self.model.background_color * (1 - fg_mask[..., None])
         setattr(self.model, 'alpha_ratio', self.alpha_ratio)
         batch.update({
-            'rays': rays, # n_rays, 6
-            'rays_time': self.dataset.frame_id_to_time(frame_id).view(-1, 1), # n_rays, 1
+            'rays': rays, # n_rays, 7
             'frame_id': frame_id.squeeze(), # n_rays
             'rgb': rgb, # n_rays, 3
             'mask': fg_mask, # n_rays
@@ -126,13 +115,13 @@ class DySDFSystem(BaseSystem):
         for _level in self.levels:
             losses[_level], stats = self._level_fn(batch, out[_level], _level)
             for key, val in stats.items():
-                self.log(f'train/{_level}_{key}', val, prog_bar=False, rank_zero_only=True)
+                self.log(f'train/{_level}_{key}', val, prog_bar=False, rank_zero_only=True, sync_dist=True)
 
         loss = sum(losses.values())
-        self.log('train/loss', loss, prog_bar=True, rank_zero_only=True)
+        self.log('train/loss', loss, prog_bar=True, rank_zero_only=True, sync_dist=True)
         _log_variables = self.model.log_variables()
         for key, val in _log_variables.items():
-            self.log(f'train/{key}', val, prog_bar=False, rank_zero_only=True)
+            self.log(f'train/{key}', val, prog_bar=False, rank_zero_only=True, sync_dist=True)
 
         return {
             'loss': loss
@@ -142,7 +131,7 @@ class DySDFSystem(BaseSystem):
         return []
 
     def validation_step(self, batch, batch_idx, prefix='val'):
-        out = self(batch) #rays (N, 6), rgb (N,3), depth (N,1)
+        out = self(batch) #rays (N, 7), rgb (N,3), depth (N,1)
         W, H = self.dataset.w, self.dataset.h
 
         stats_dict = dict()
@@ -205,7 +194,7 @@ class DySDFSystem(BaseSystem):
             for key in metrics:
                 m_val = torch.mean(torch.stack([o[key] for o in out_set.values()]))
                 metrics_dict[key] = float(m_val.detach().cpu())
-                self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True)         
+                self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True, sync_dist=True)
             return metrics_dict
         return out
 

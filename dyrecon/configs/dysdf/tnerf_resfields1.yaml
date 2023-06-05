@@ -1,0 +1,9 @@
+defaults:
+  - base.yaml
+
+tag: 'tnerf_resfields1'
+
+model:
+  sdf_net:
+    independent_layers: [1]
+    composition_rank: 10
