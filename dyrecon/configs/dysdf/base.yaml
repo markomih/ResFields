@@ -86,11 +86,10 @@ system:
     args:
       lr: 0.0005 #5e-4 0.0001
   scheduler:
-    warm_up_end: 5000
-    final_lr: 0.0001
-    learning_rate: ${system.optimizer.args.lr}
-    learning_rate_alpha: 0.05
-    max_steps: ${trainer.max_steps}
+    name: CosineAnnealingLR
+    args:
+      T_max: ${trainer.max_steps}
+      eta_min: ${mul:${system.optimizer.args.lr}, 0.1}}
 
 checkpoint:
   save_top_k: -1

@@ -138,9 +138,6 @@ class DySDFSystem(BaseSystem):
         self.levels = out.keys()
         for _level in self.levels:
             loss, stats = self._level_fn(batch, out[_level], _level)
-            # if 'covisible_masks' in batch:
-            #     _out = out[_level]
-            #     stats["metric_mssim"] = criterions.compute_ssim(_out["rgb"].reshape((H,W,3)).cpu(), batch["rgb"].reshape((H,W,3)), batch["covisible_masks"].reshape(H, W, 1).cpu())
 
             stats_dict.update({f"{_level}_{key}": val for key, val in stats.items()})
             stats_dict[f'{_level}_loss'] = loss
@@ -151,13 +148,17 @@ class DySDFSystem(BaseSystem):
             ]
             _log_imgs += self.vis_extra_images(batch, out[_level])
             if 'normal' in out[_level]:
-                normal = 0.5 + 0.5*out[_level]['normal'].view(H, W, 3)*out[_level]['opacity'].view(H, W, 1)
+                normal = (0.5 + 0.5*out[_level]['normal'].view(H, W, 3))*out[_level]['opacity'].view(H, W, 1)
+                normal = normal + self.model.background_color.view(1, 1, 3).expand(normal.shape)*(1.0 - out[_level]['opacity'].view(H, W, 1))
                 _log_imgs.append(
                     {'type': 'rgb', 'img': normal, 'kwargs': {'data_format': 'HWC'}},
                 )
+            if 'depth' in out[_level]:
+                _log_imgs += [
+                    {'type': 'grayscale', 'img': out[_level]['depth'].view(H, W), 'kwargs': {}},
+                ]
 
             _log_imgs += [
-                {'type': 'grayscale', 'img': out[_level]['depth'].view(H, W), 'kwargs': {}},
                 {'type': 'grayscale', 'img': out[_level]['opacity'].view(H, W), 'kwargs': {'cmap': None, 'data_range': (0, 1)}}
             ]
 

@@ -4,7 +4,6 @@ import pytorch_lightning as pl
 from utils.misc import get_rank
 
 import models
-from systems.utils import parse_optimizer, parse_scheduler, update_module_step
 from utils.mixins import SaverMixin
 from utils.misc import config_to_primitive
 
@@ -57,22 +56,18 @@ class BaseSystem(pl.LightningModule, SaverMixin):
     def on_train_batch_start(self, batch, batch_idx, unused=0):
         self.dataset = self.trainer.datamodule.train_dataloader().dataset
         self.preprocess_data(batch, 'train')
-        update_module_step(self.model, self.current_epoch, self.global_step)
     
     def on_validation_batch_start(self, batch, batch_idx, dataloader_idx):
         self.dataset = self.trainer.datamodule.val_dataloader().dataset
         self.preprocess_data(batch, 'validation')
-        update_module_step(self.model, self.current_epoch, self.global_step)
     
     def on_test_batch_start(self, batch, batch_idx, dataloader_idx):
         self.dataset = self.trainer.datamodule.test_dataloader().dataset
         self.preprocess_data(batch, 'test')
-        update_module_step(self.model, self.current_epoch, self.global_step)
 
     def on_predict_batch_start(self, batch, batch_idx, dataloader_idx):
         self.dataset = self.trainer.datamodule.predict_dataloader().dataset
         self.preprocess_data(batch, 'predict')
-        update_module_step(self.model, self.current_epoch, self.global_step)
     
     def training_step(self, batch, batch_idx):
         raise NotImplementedError
@@ -116,10 +111,17 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         raise NotImplementedError
 
     def configure_optimizers(self):
-        ret = {
-            'optimizer': parse_optimizer(self.config.system.optimizer, self.model),
+        optim = getattr(torch.optim, self.config.system.optimizer.name)
+        to_ret = {
+            'optimizer':  optim(self.model.parameters(), **self.config.system.optimizer.args),
         }
-        return ret
+        if self.config.system.scheduler:
+            scheduler = getattr(torch.optim.lr_scheduler, self.config.system.scheduler.name)
+            to_ret['lr_scheduler'] = {
+                "scheduler": scheduler(to_ret['optimizer'], **self.config.system.scheduler.args),
+                "frequency": "step"
+            }
+        return to_ret
 
     def _update_learning_rate(self):
         iter_step = self.global_step

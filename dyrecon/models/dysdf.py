@@ -88,7 +88,7 @@ class DySDF(BaseModel):
         to_ret = {
             'rgb': torch.zeros_like(rays_o),
             'opacity': torch.zeros_like(rays_o[:, :1]),
-            'normal_map': torch.zeros_like(rays_o),
+            'normal': torch.zeros_like(rays_o),
             'depth': torch.zeros_like(rays_o[:, :1]),
         }
         # sample points for volume rendering
@@ -149,7 +149,7 @@ class DySDF(BaseModel):
 
         to_ret['rgb'][inside_rays] = comp_rgb
         to_ret['opacity'][inside_rays] = opacity
-        to_ret['normal_map'][inside_rays] = comp_normal
+        to_ret['normal'][inside_rays] = comp_normal
         to_ret['depth'][inside_rays] = depth
 
         if self.background_color is not None:
