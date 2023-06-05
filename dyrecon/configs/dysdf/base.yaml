@@ -89,7 +89,7 @@ system:
     name: CosineAnnealingLR
     args:
       T_max: ${trainer.max_steps}
-      eta_min: ${mul:${system.optimizer.args.lr}, 0.1}}
+      eta_min: ${mul:${system.optimizer.args.lr}, 0.1}
 
 checkpoint:
   save_top_k: -1

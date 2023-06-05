@@ -19,7 +19,6 @@ class DySDFSystem(BaseSystem):
         self.train_num_rays = self.sampling.train_num_rays
 
     def forward(self, batch):
-        # TODO here use model.render
         return self.model(**batch) 
     
     def preprocess_data(self, batch, stage):
@@ -146,6 +145,9 @@ class DySDFSystem(BaseSystem):
                 {'type': 'rgb', 'img': batch['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
                 {'type': 'rgb', 'img': out[_level]['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
             ]
+            if prefix == 'test':
+                self.save_image_grid(f"rgb_gt/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-2]])
+                self.save_image_grid(f"rgb/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-1]])
             _log_imgs += self.vis_extra_images(batch, out[_level])
             if 'normal' in out[_level]:
                 normal = (0.5 + 0.5*out[_level]['normal'].view(H, W, 3))*out[_level]['opacity'].view(H, W, 1)
@@ -153,6 +155,8 @@ class DySDFSystem(BaseSystem):
                 _log_imgs.append(
                     {'type': 'rgb', 'img': normal, 'kwargs': {'data_format': 'HWC'}},
                 )
+                if prefix == 'test':
+                    self.save_image_grid(f"normal/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-1]])
             if 'depth' in out[_level]:
                 _log_imgs += [
                     {'type': 'grayscale', 'img': out[_level]['depth'].view(H, W), 'kwargs': {}},

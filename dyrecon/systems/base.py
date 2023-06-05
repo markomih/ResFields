@@ -119,7 +119,8 @@ class BaseSystem(pl.LightningModule, SaverMixin):
             scheduler = getattr(torch.optim.lr_scheduler, self.config.system.scheduler.name)
             to_ret['lr_scheduler'] = {
                 "scheduler": scheduler(to_ret['optimizer'], **self.config.system.scheduler.args),
-                "frequency": "step"
+                "interval": 'step', # The unit of the scheduler's step size
+                "frequency": 1, # The frequency of the scheduler
             }
         return to_ret
 
