@@ -1,16 +1,13 @@
+import os
 import torch
 import torch.nn.functional as F
-import numpy as np
 import yaml
-
 from utils.ray_utils import get_rays
 import systems
 from typing import Dict, Any
 from collections import OrderedDict
 from systems.base import BaseSystem
-from systems import criterions
 from models.utils import masked_mean
-# from utils.misc import plot_heatmap
 
 @systems.register('dysdf_system')
 class DySDFSystem(BaseSystem):
@@ -145,9 +142,10 @@ class DySDFSystem(BaseSystem):
                 {'type': 'rgb', 'img': batch['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
                 {'type': 'rgb', 'img': out[_level]['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
             ]
+            file_name = f"{batch['index'].squeeze().item():06d}"
             if prefix == 'test':
-                self.save_image_grid(f"rgb_gt/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-2]])
-                self.save_image_grid(f"rgb/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-1]])
+                self.save_image_grid(f"rgb_gt/it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", [_log_imgs[-2]])
+                self.save_image_grid(f"rgb/it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", [_log_imgs[-1]])
             _log_imgs += self.vis_extra_images(batch, out[_level])
             if 'normal' in out[_level]:
                 normal = (0.5 + 0.5*out[_level]['normal'].view(H, W, 3))*out[_level]['opacity'].view(H, W, 1)
@@ -156,7 +154,7 @@ class DySDFSystem(BaseSystem):
                     {'type': 'rgb', 'img': normal, 'kwargs': {'data_format': 'HWC'}},
                 )
                 if prefix == 'test':
-                    self.save_image_grid(f"normal/it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", [_log_imgs[-1]])
+                    self.save_image_grid(f"normal/it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", [_log_imgs[-1]])
             if 'depth' in out[_level]:
                 _log_imgs += [
                     {'type': 'grayscale', 'img': out[_level]['depth'].view(H, W), 'kwargs': {}},
@@ -166,17 +164,11 @@ class DySDFSystem(BaseSystem):
                 {'type': 'grayscale', 'img': out[_level]['opacity'].view(H, W), 'kwargs': {'cmap': None, 'data_range': (0, 1)}}
             ]
 
-            img = self.save_image_grid(f"it{self.global_step}-{prefix}_{_level}/{batch['index'][0].item()}.png", _log_imgs)
+            img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", _log_imgs)
             if self.trainer.is_global_zero:
                 if self.logger is not None:
-                    self.logger.experiment.add_image(f'{prefix}/{_level}_renderings', img/255., self.global_step, dataformats='HWC')
-
-        # if self.trainer.is_global_zero:  # VISUALIZE
-        #     ambient_codes = getattr(self.model, 'ambient_codes', None)
-        #     if ambient_codes is not None:
-        #         img_ambient_codes = plot_heatmap(ambient_codes.clone().detach().cpu().numpy())
-        #         if self.logger is not None:
-        #             self.logger.experiment.add_image(f'{prefix}/img_ambient_codes', img_ambient_codes/255., self.global_step, dataformats='HWC')
+                    self.logger.log_image(key=f'{prefix}/{_level}_renderings', images=[img/255.], caption=["renderings"])
+                    # self.logger.experiment.add_image(f'{prefix}/{_level}_renderings', img/255., self.global_step, dataformats='HWC')
 
         stats_dict['index'] = batch['index']
         return stats_dict
@@ -203,19 +195,24 @@ class DySDFSystem(BaseSystem):
             return metrics_dict
         return out
 
-    def test_step(self, batch, batch_idx):  
+    def test_step(self, batch, batch_idx):
+        frame_id = batch['frame_id']
+        file_name = f"{int(frame_id.item()):06d}"
+        mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
+        if not os.path.exists(mesh_path):
+            time_step = self.dataset.frame_id_to_time(frame_id)
+            # NOTE two concurrent processes may write to the same file
+            self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
         return self.validation_step(batch, batch_idx, prefix='test')
 
     def test_epoch_end(self, out):
         prefix = 'test'
         metrics_dict = self.validation_epoch_end(out, prefix=prefix)
         if self.trainer.is_global_zero:
-            # mesh = self.model.isosurface(can_space=False)
-            # self.save_mesh(f"it{self.global_step}-{self.config.model.isosurface.resolution}.obj", mesh)
-            res_path = self.get_save_path(f'results_it{self.global_step}-{prefix}.yaml')
+            res_path = self.get_save_path(f'results_it{self.global_step:06d}-{prefix}.yaml')
             with open(res_path, 'w') as file:
                 yaml.dump(metrics_dict, file)
 
             for _level in self.levels:
-                idir = f"it{self.global_step}-{prefix}_{_level}"
+                idir = f"it{self.global_step:06d}-{prefix}_{_level}"
                 self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=30)

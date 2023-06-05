@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import argparse
+import wandb
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
@@ -64,12 +65,22 @@ def main():
                 config, config.config_dir, use_version=False
             ),
             CustomProgressBar(refresh_rate=50),
+            # pl.callbacks.DeviceStatsMonitor(False),
         ]
 
     loggers = []
     if args.train:
         loggers += [
-            pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name),
+            pl.loggers.WandbLogger(
+                name=config.name,
+                project='resfields',
+                entity='markomih',
+                save_dir=config.exp_dir,
+                config=config,
+                # offline=cfg.wandb.offline,
+                settings=wandb.Settings(start_method='fork')
+                )
+            # pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name),
         ]
     
     trainer = pl.Trainer(

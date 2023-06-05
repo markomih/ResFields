@@ -1,7 +1,6 @@
+name: dysdf-${dataset.scene}-tnerf_resfields1
 defaults:
   - base.yaml
-
-tag: 'tnerf_resfields1'
 
 model:
   sdf_net:

@@ -177,13 +177,12 @@ def near_far_from_sphere(rays_o, rays_d):
     return near, far
 
 def extract_geometry(bound_min, bound_max, resolution, threshold, query_func):
-    print('threshold: {}'.format(threshold))
     u = extract_fields(bound_min, bound_max, resolution, query_func)
     vertices, triangles = mcubes.marching_cubes(u, threshold)
     b_max_np = bound_max.detach().cpu().numpy()
     b_min_np = bound_min.detach().cpu().numpy()
-
-    vertices = vertices / (resolution - 1.0) * (b_max_np - b_min_np)[None, :] + b_min_np[None, :]
+    if len(vertices) > 0:
+        vertices = vertices / (resolution - 1.0) * (b_max_np - b_min_np)[None, :] + b_min_np[None, :]
     mesh = trimesh.Trimesh(vertices, triangles)
     return mesh
 

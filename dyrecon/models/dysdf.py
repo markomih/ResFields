@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from models.base import BaseModel
 from models.utils import chunk_batch_levels
-from models.utils import ray_bbox_intersection
+from models.utils import ray_bbox_intersection, extract_geometry
 
 @models.register('DySDF')
 class DySDF(BaseModel):
@@ -69,8 +69,38 @@ class DySDF(BaseModel):
         renderings = self.volume_rendering(rays_o, rays_d, rays_time, frame_id)
         return dict(coarse=renderings)
 
-    def isosurface(self, resolution=None):
-        return
+    def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
+        assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
+        _deform_codes = self.deform_codes[frame_id].view(1, -1, 1) if self.deform_codes is not None else None
+        _hyper_codes = self.hyper_codes[frame_id].view(1, -1, 1) if self.hyper_codes is not None else None
+
+        def _query_sdf(pts):
+            # pts: Tensor with shape (n_pts, 3). Dtype=float32.
+            pts = pts.view(1, -1, 3).to(frame_id.device)
+            deform_codes = _deform_codes.expand(-1, pts.shape[1], -1) if _deform_codes is not None else None
+            hyper_codes = _hyper_codes.expand(-1, pts.shape[1], -1) if _hyper_codes is not None else None
+            pts_time = torch.full_like(pts[..., :1], time_step)
+
+            pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
+            hyper_coord = pts_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, pts_time, self.alpha_ratio)
+                
+            sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, frame_id=frame_id)[..., :1]
+            sdf = sdf.squeeze()
+
+            # sdf = self.sdf_network.sdf(pts_canonical, ambient_coord, self.alpha_ratio, frame_id=time_step)
+            if self.scene_aabb is not None:
+                eps = 0.025
+                bmin = self.scene_aabb[:3][None] + eps
+                bmax = self.scene_aabb[3:6][None] - eps
+                inside_mask = (pts > bmin[None]).all(-1) & (pts < bmax[None]).all(-1)
+                sdf[~inside_mask.squeeze()] = 1e4
+            return -sdf.view(-1)
+        
+        bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
+        bound_max = torch.tensor([ 1.0,  1.0,  1.0], dtype=torch.float32)
+        mesh = extract_geometry(bound_min, bound_max, resolution=resolution, threshold=0, query_func=_query_sdf)
+        mesh.export(mesh_path)
+        return mesh
 
     def get_render_step_size(self):
         """ Get the render step size based on the size of bounding box."""

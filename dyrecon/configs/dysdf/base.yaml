@@ -31,6 +31,8 @@ model:
     strategy: interpolated
     max_steps: 50000
 
+  isosurface:
+    resolution: 512
   sampling:
     use_balanced_rays: True
     time_ray_blanced_sampling: True
