@@ -138,7 +138,6 @@ def dot(x, y):
 def reflect(x, n):
     return 2 * dot(x, n) * n - x
 
-@torch.jit.script
 def masked_mean(x:torch.Tensor, mask: torch.Tensor, eps:float=1e-6) -> torch.Tensor:
     """Compute mean of masked values by soft blending.
 

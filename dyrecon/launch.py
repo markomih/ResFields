@@ -18,6 +18,7 @@ group.add_argument('--train', action='store_true')
 group.add_argument('--validate', action='store_true')
 group.add_argument('--test', action='store_true')
 group.add_argument('--predict', action='store_true')
+group.add_argument('--wandb_logger', action='store_true', default=False)
 
 parser.add_argument('--exp_dir', default='../exp')
 parser.add_argument('--verbose', action='store_true', help='if true, set logging level to DEBUG')
@@ -70,8 +71,8 @@ def main():
 
     loggers = []
     if args.train:
-        loggers += [
-            pl.loggers.WandbLogger(
+        if args.wandb_logger:
+            _logger = pl.loggers.WandbLogger(
                 name=config.name,
                 project='resfields',
                 entity='markomih',
@@ -80,8 +81,9 @@ def main():
                 # offline=cfg.wandb.offline,
                 settings=wandb.Settings(start_method='fork')
                 )
-            # pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name),
-        ]
+        else:
+            _logger = pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name)
+        loggers.append(_logger)
     
     trainer = pl.Trainer(
         devices=n_gpus,

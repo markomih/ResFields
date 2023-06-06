@@ -8,6 +8,7 @@ from typing import Dict, Any
 from collections import OrderedDict
 from systems.base import BaseSystem
 from models.utils import masked_mean
+from . import criterions
 
 @systems.register('dysdf_system')
 class DySDFSystem(BaseSystem):
@@ -100,6 +101,16 @@ class DySDFSystem(BaseSystem):
             stats["loss_eikonal"] = out["gradient_error"]
             loss += loss_weight.eikonal * stats["loss_eikonal"]
 
+        # compute test metrics
+        if not self.training:
+            W, H = self.dataset.w, self.dataset.h
+            stats.update(dict(
+                mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], batch['mask'].view(-1, 1)),
+                psnr = criterions.compute_psnr(out['rgb'], batch['rgb']),
+                ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
+                mask_bce = F.binary_cross_entropy((batch['mask'].squeeze()).float(), out['opacity'].squeeze()),
+            ))
+
         return loss, stats
 
     def training_step(self, batch, batch_idx):
@@ -167,8 +178,11 @@ class DySDFSystem(BaseSystem):
             img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", _log_imgs)
             if self.trainer.is_global_zero:
                 if self.logger is not None:
-                    self.logger.log_image(key=f'{prefix}/{_level}_renderings', images=[img/255.], caption=["renderings"])
-                    # self.logger.experiment.add_image(f'{prefix}/{_level}_renderings', img/255., self.global_step, dataformats='HWC')
+                    if 'WandbLogger' in str(type(self.logger)):
+                        self.logger.log_image(key=f'{prefix}/{_level}_renderings', images=[img/255.], caption=["renderings"])
+                    else:
+                        self.logger.experiment.add_image(f'{prefix}/{_level}_renderings', img/255., self.global_step, dataformats='HWC')
+
 
         stats_dict['index'] = batch['index']
         return stats_dict
