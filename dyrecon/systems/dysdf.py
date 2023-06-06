@@ -105,10 +105,10 @@ class DySDFSystem(BaseSystem):
         if not self.training:
             W, H = self.dataset.w, self.dataset.h
             stats.update(dict(
-                mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], batch['mask'].view(-1, 1)),
-                psnr = criterions.compute_psnr(out['rgb'], batch['rgb']),
-                ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
-                mask_bce = F.binary_cross_entropy((batch['mask'].squeeze()).float(), out['opacity'].squeeze()),
+                metric_mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], batch['mask'].view(-1, 1)),
+                metric_psnr = criterions.compute_psnr(out['rgb'], batch['rgb']),
+                metric_ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
+                metric_mask_bce = F.binary_cross_entropy((batch['mask'].squeeze()).float(), out['opacity'].squeeze()),
             ))
 
         return loss, stats
