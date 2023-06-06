@@ -13,7 +13,30 @@ import torch.nn.functional as F
 import datasets
 from utils.misc import get_rank, vector_cat
 
-from . import utils
+# from . import utils
+# This function is borrowed from IDR: https://github.com/lioryariv/idr
+def load_K_Rt_from_P(filename, P=None):
+    if P is None:
+        lines = open(filename).read().splitlines()
+        if len(lines) == 4:
+            lines = lines[1:]
+        lines = [[x[0], x[1], x[2], x[3]] for x in (x.split(" ") for x in lines)]
+        P = np.asarray(lines).astype(np.float32).squeeze()
+
+    out = cv.decomposeProjectionMatrix(P)
+    K = out[0]
+    R = out[1]
+    t = out[2]
+
+    K = K / K[2, 2]
+    intrinsics = np.eye(4)
+    intrinsics[:3, :3] = K
+
+    pose = np.eye(4, dtype=np.float32)
+    pose[:3, :3] = R.transpose()
+    pose[:3, 3] = (t[:3] / t[3])[:, 0]
+
+    return intrinsics, pose
 
 def get_ray_directions(H, W, K, OPENGL_CAMERA=False):
     x, y = torch.meshgrid(
@@ -35,7 +58,7 @@ def parse_cam(scale_mats_np, world_mats_np):
     for scale_mat, world_mat in zip(scale_mats_np, world_mats_np):
         P = world_mat @ scale_mat
         P = P[:3, :4]
-        intrinsics, pose = utils.load_K_Rt_from_P(None, P)
+        intrinsics, pose = load_K_Rt_from_P(None, P)
         intrinsics_all.append(torch.from_numpy(intrinsics).float())
         pose_all.append(torch.from_numpy(pose).float())
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
@@ -95,6 +118,9 @@ class DySDFDatasetBase():
         self.directions = torch.cat(_directions, dim=0).to(rank)
         self.image_pixels = self.h * self.w
         self.time_max = frame_ids.max() + 1
+        # compute indices of foreground pixels for sampling
+        self.fg_inds = torch.stack(torch.where((self.all_fg_masks > 0.0).bool()), -1)
+        self.bg_inds = torch.stack(torch.where(~(self.all_fg_masks > 0.0).bool()), -1)
         print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.all_fg_masks.shape, self.frame_ids.shape, self.directions.shape)
 
     def frame_id_to_time(self, frame_id):

@@ -6,6 +6,7 @@ import math
 import torch.nn.functional as F
 import models
 from models.base import BaseModel
+import resfields
 
 class Embedder:
     def __init__(self, **kwargs):
@@ -70,6 +71,7 @@ def get_embedder(multires, input_dims=3):
 class SDFNetwork(BaseModel):
     def setup(self):
         self.n_frames = self.config.n_frames
+        self.capacity = self.n_frames
         self.d_out = self.config.d_out
         self.d_in_1 = self.config.d_in_1
         self.d_in_2 = self.config.d_in_2
@@ -112,7 +114,9 @@ class SDFNetwork(BaseModel):
             else:
                 out_dim = dims[l + 1]
 
-            lin = nn.Linear(dims[l], out_dim)
+            _rank = self.composition_rank if l in self.independent_layers else 0
+            _capacity = self.capacity if l in self.independent_layers else 0
+            lin = resfields.Linear(dims[l], out_dim, rank=_rank, capacity=_capacity, mode='lookup')
 
             if self.geometric_init:
                 if l == self.num_layers - 2:
@@ -137,25 +141,23 @@ class SDFNetwork(BaseModel):
                     torch.nn.init.constant_(lin.bias, 0.0)
                     torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
 
-            if l in self.independent_layers:
-                self.register_parameter(f'lin_{l}_w1', torch.nn.Parameter(0.01*torch.randn((self.composition_rank, self.n_frames))))
-                self.register_parameter(f'lin_{l}_m1', torch.nn.Parameter(0.01*torch.randn((self.composition_rank, lin.weight.shape[0], lin.weight.shape[1]))))
             if self.weight_norm:
                 lin = nn.utils.weight_norm(lin)
 
             setattr(self, "lin" + str(l), lin)
-        for name, param in self.named_parameters():
-            print(name)
+        print(self)
         self.activation = nn.Softplus(beta=100)
 
-    def forward(self, input_pts, topo_coord=None, alpha_ratio=1.0, frame_id=None):
+    def forward(self, input_pts, topo_coord=None, alpha_ratio=1.0, input_time=None, frame_id=None):
         """
             Args:
                 input_pts: Tensor of shape (n_rays, n_samples, d_in_1)
                 topo_coord: Optional tensor of shape (n_rays, n_samples, d_in_2)
                 alpha_ratio (float): decay ratio of positional encoding
-                frame_id: Optional tensor of shape (n_rays)
+                input_time: Optional tensor of shape (n_rays, n_rays)
+                # frame_id: Optional tensor of shape (n_rays)
         """
+        # TIME = topo_coord
         inputs = input_pts * self.scale
         if self.embed_fn_fine is not None:
             inputs = self.embed_fn_fine(inputs, alpha_ratio)
@@ -169,19 +171,7 @@ class SDFNetwork(BaseModel):
                 x = torch.cat([x, inputs], -1) / np.sqrt(2)
 
             lin = getattr(self, "lin" + str(l))
-            if l in self.independent_layers:
-                _w1 = getattr(self, f'lin_{l}_w1')  # R, T
-                _m = getattr(self, f'lin_{l}_m1') #+ lin.weight[None] # R, F_out,F_in
-                lin_w = (_w1.permute(1, 0) @ _m.view(_m.shape[0], -1)).view(_w1.shape[1], *_m.shape[1:]) + lin.weight[None] # T,F_out,F_in
-
-                if frame_id.numel() == 1:
-                    x = F.linear(x, lin_w[frame_id.squeeze()], lin.bias)
-                else:
-                    lin_w = lin_w[frame_id] # n_rays,F_out,F_in
-                    x = lin_w @ x.permute(0, 2, 1) + lin.bias.view(1, -1, 1) # n_rays,F_out,F_in @ n_rays,F_in,N -> n_rays,F_out,N
-                    x = x.permute(0, 2, 1) # n_rays,N,F_out
-            else:
-                x = lin(x)
+            x = lin(x, input_time=input_time, frame_id=frame_id)
 
             if l < self.num_layers - 2:
                 x = self.activation(x)

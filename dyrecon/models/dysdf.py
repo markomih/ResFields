@@ -84,7 +84,7 @@ class DySDF(BaseModel):
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
             hyper_coord = pts_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, pts_time, self.alpha_ratio)
                 
-            sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, frame_id=frame_id)[..., :1]
+            sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=time_step, frame_id=frame_id)[..., :1]
             sdf = sdf.squeeze()
 
             # sdf = self.sdf_network.sdf(pts_canonical, ambient_coord, self.alpha_ratio, frame_id=time_step)
@@ -145,8 +145,11 @@ class DySDF(BaseModel):
             mid_z_vals = z_vals + dists * 0.5
     
             pts = rays_o[:, None, :] + rays_d[:, None, :] * mid_z_vals[..., :, None]  # n_rays, n_samples, 3
-            rays_time = rays_time[:, None, :].expand(-1, pts.shape[1], -1) # n_rays, n_samples, 1
+            pts_time = rays_time[:, None, :].expand(-1, pts.shape[1], -1) # n_rays, n_samples, 1
             rays_d = rays_d[:, None, :].expand(pts.shape) # n_rays, n_samples, 3
+            if frame_id.numel() == 1:
+                rays_time = rays_time.view(-1)[0]
+
 
         # Forward through networks
         with torch.inference_mode(False), torch.enable_grad():  # enable gradient for computing gradients
@@ -159,10 +162,10 @@ class DySDF(BaseModel):
             ambient_codes = self.ambient_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.ambient_codes is not None else None
             hyper_codes = self.hyper_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.hyper_codes is not None else None
 
-            pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, rays_time)
-            hyper_coord = rays_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, rays_time, self.alpha_ratio)
+            pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
+            hyper_coord = pts_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, pts_time, self.alpha_ratio)
                 
-            sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, frame_id=frame_id)
+            sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=rays_time.squeeze(-1), frame_id=frame_id.squeeze(-1))
             sdf, feature_vector = sdf_nn_output[..., :1], sdf_nn_output[..., 1:] # (n_rays, n_samples, 1), (n_rays, n_samples, F)
 
             gradients_o =  torch.autograd.grad(outputs=sdf, inputs=pts, grad_outputs=torch.ones_like(sdf, requires_grad=False, device=sdf.device), create_graph=True, retain_graph=True, only_inputs=True)[0]

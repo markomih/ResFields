@@ -19,37 +19,45 @@ class DySDFSystem(BaseSystem):
     def forward(self, batch):
         return self.model(**batch) 
     
-    def preprocess_data(self, batch, stage):
-        if 'index' in batch: # validation / testing
-            index = batch['index']
-        else:
-            if self.sampling.batch_image_sampling and stage in ['train']:
-                index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=self.dataset.all_images.device)
-            else:
-                index = torch.randint(0, len(self.dataset.all_images), size=(1,), device=self.dataset.all_images.device)
-        frame_id = self.dataset.frame_ids[index]
-
+    def _sample_pixels(self, stage, batch, device):
+        index, y, x = None, None, None
         if stage in ['train']:
-            c2w = self.dataset.all_c2w[index]
-            x = torch.randint(
-                0, self.dataset.w, size=(self.train_num_rays,), device=self.dataset.all_images.device
-            )
-            y = torch.randint(
-                0, self.dataset.h, size=(self.train_num_rays,), device=self.dataset.all_images.device
-            )
+            if self.sampling.strategy == 'balanced':
+                fg_rays = self.train_num_rays//2
+                bg_rays = int(self.train_num_rays - fg_rays)
+
+                _fg_inds = self.dataset.fg_inds[torch.randint(0, self.dataset.fg_inds.shape[0], size=(fg_rays,), device=device)] # B,3
+                _bg_inds = self.dataset.bg_inds[torch.randint(0, self.dataset.bg_inds.shape[0], size=(bg_rays,), device=device)] # B,3\
+                _inds = torch.cat((_fg_inds, _bg_inds), 0)
+                index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
+            else:
+                index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=device)
+                x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,), device=device)
+                y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,), device=device)
+        else:
+            if 'index' in batch: # validation / testing
+                index = batch['index']
+            else:
+                index = torch.randint(0, len(self.dataset.all_images), size=(1,), device=device)
+        return index, y, x
+
+    def preprocess_data(self, batch, stage):
+        device = self.dataset.all_images.device
+
+        index, y, x = self._sample_pixels(stage, batch, device)
+        if stage in ['train']:
             directions = self.dataset.directions[index, y, x] # (B,3)
+            c2w = self.dataset.all_c2w[index]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
-            batch['index'] = index
-            batch['y'] = y
-            batch['x'] = x
         else:
             c2w = self.dataset.all_c2w[index].squeeze(0)
             directions = self.dataset.directions[index].squeeze(0) #(H,W,3)
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index].view(-1)
+        frame_id = self.dataset.frame_ids[index]
         rays_time = self.dataset.frame_id_to_time(frame_id).view(-1, 1)
         if rays_time.shape[0] != rays_o.shape[0]:
             rays_time = rays_time.expand(rays_o.shape[0], rays_time.shape[1])

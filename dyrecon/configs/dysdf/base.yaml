@@ -34,9 +34,7 @@ model:
   isosurface:
     resolution: 512
   sampling:
-    use_balanced_rays: True
-    time_ray_blanced_sampling: True
-
+    strategy: balanced
     train_num_rays: 1100 #6144
     batch_image_sampling: true
     n_samples: 256

@@ -1,9 +1,12 @@
 import os
+import os.path as osp
 import time
 import logging
 import argparse
 import wandb
 from datetime import datetime
+import sys
+sys.path.append(osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'resfields'))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', required=True, help='path to config file')
@@ -37,10 +40,10 @@ def main():
     config.cmd_args = vars(args)
 
     config.trial_name = config.get('trial_name') or (config.tag + datetime.now().strftime('@%Y%m%d-%H%M%S'))
-    config.exp_dir = config.get('exp_dir') or os.path.join(args.exp_dir, config.name)
-    config.save_dir = config.get('save_dir') or os.path.join(config.exp_dir, config.trial_name, 'save')
-    config.ckpt_dir = config.get('ckpt_dir') or os.path.join(config.exp_dir, config.trial_name, 'ckpt')
-    config.config_dir = config.get('config_dir') or os.path.join(config.exp_dir, config.trial_name, 'config')
+    config.exp_dir = config.get('exp_dir') or osp.join(args.exp_dir, config.name)
+    config.save_dir = config.get('save_dir') or osp.join(config.exp_dir, config.trial_name, 'save')
+    config.ckpt_dir = config.get('ckpt_dir') or osp.join(config.exp_dir, config.trial_name, 'ckpt')
+    config.config_dir = config.get('config_dir') or osp.join(config.exp_dir, config.trial_name, 'config')
 
     logger = logging.getLogger('pytorch_lightning')
     if args.verbose:
@@ -82,7 +85,7 @@ def main():
                 settings=wandb.Settings(start_method='fork')
                 )
         else:
-            _logger = pl.loggers.TensorBoardLogger(os.path.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name)
+            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name)
         loggers.append(_logger)
     
     trainer = pl.Trainer(

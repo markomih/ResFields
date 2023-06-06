@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 from torch.cuda.amp import custom_bwd, custom_fwd
+from packaging.version import parse as parse_version
 
 def chunk_batch(func, chunk_size, *args, **kwargs):
     B = None
@@ -175,6 +176,13 @@ def near_far_from_sphere(rays_o, rays_d):
     far = mid + 1.0
     return near, far
 
+def custom_meshgrid(*args):
+    # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid
+    if parse_version(torch.__version__) < parse_version('1.10'):
+        return torch.meshgrid(*args)
+    else:
+        return torch.meshgrid(*args, indexing='ij')
+
 def extract_geometry(bound_min, bound_max, resolution, threshold, query_func):
     u = extract_fields(bound_min, bound_max, resolution, query_func)
     vertices, triangles = mcubes.marching_cubes(u, threshold)
@@ -197,7 +205,7 @@ def extract_fields(bound_min, bound_max, resolution, query_func):
         for xi, xs in enumerate(X):
             for yi, ys in enumerate(Y):
                 for zi, zs in enumerate(Z):
-                    xx, yy, zz = torch.meshgrid(xs, ys, zs)
+                    xx, yy, zz = custom_meshgrid(xs, ys, zs)
                     pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1)
                     val = query_func(pts).reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy()
                     u[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = val
