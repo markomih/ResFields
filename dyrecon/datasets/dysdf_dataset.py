@@ -121,6 +121,9 @@ class DySDFDatasetBase():
         # compute indices of foreground pixels for sampling
         self.fg_inds = torch.stack(torch.where((self.all_fg_masks > 0.0).bool()), -1)
         self.bg_inds = torch.stack(torch.where(~(self.all_fg_masks > 0.0).bool()), -1)
+        yx_fg_mask = (self.all_fg_masks > 0.0).any(dim=0) # H, W
+        self.yx_fg_inds = torch.stack(torch.where(yx_fg_mask), -1) # n_fg_pixels, 2
+        self.yx_bg_inds = torch.stack(torch.where(~yx_fg_mask), -1) # n_bg_pixels, 2
         print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.all_fg_masks.shape, self.frame_ids.shape, self.directions.shape)
 
     def frame_id_to_time(self, frame_id):

@@ -30,6 +30,19 @@ class DySDFSystem(BaseSystem):
                 _bg_inds = self.dataset.bg_inds[torch.randint(0, self.dataset.bg_inds.shape[0], size=(bg_rays,), device=device)] # B,3\
                 _inds = torch.cat((_fg_inds, _bg_inds), 0)
                 index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
+            elif self.sampling.strategy == 'time_balanced':
+                n_cameras = self.dataset.all_images.shape[0]
+                assert self.train_num_rays % n_cameras == 0, 'train_num_rays should be divisible by the number of cameras and frames'
+                bg_rays = self.train_num_rays//4
+                fg_rays = int(self.train_num_rays - bg_rays)
+
+                _yx_fg_inds = self.dataset.yx_fg_inds[torch.randint(0, self.dataset.yx_fg_inds.shape[0], size=(fg_rays,), device=device)] # B,3
+                _yx_bg_inds = self.dataset.yx_bg_inds[torch.randint(0, self.dataset.yx_bg_inds.shape[0], size=(bg_rays,), device=device)] # B,3\
+                _yx_inds = torch.cat((_yx_fg_inds, _yx_bg_inds), 0)
+
+                n_samples_per_time = self.train_num_rays//self.dataset.all_images.shape[0]
+                index = torch.arange(0, n_cameras, device=device).view(-1, 1).expand(-1, n_samples_per_time).reshape(-1)
+                y, x = _yx_inds[:, 0], _yx_inds[:, 1]
             else:
                 index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=device)
                 x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,), device=device)
