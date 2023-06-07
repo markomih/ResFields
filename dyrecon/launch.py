@@ -90,8 +90,7 @@ def main():
                 settings=wandb.Settings(start_method='fork')
                 )
         else:
-            os.makedirs(osp.join(config.exp_dir, 'runs'), exist_ok=True)
-            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'))
+            _logger = pl.loggers.TensorBoardLogger(config.exp_dir, name='runs')
         loggers.append(_logger)
     
     trainer = pl.Trainer(
