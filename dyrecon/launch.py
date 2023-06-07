@@ -1,5 +1,6 @@
 import os
 import os.path as osp
+import torch
 import time
 import logging
 import argparse
@@ -116,8 +117,8 @@ def main():
     elif args.predict:
         trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
 
-    # for _gpu in gpu_list:
-    #     print(f'MAX MEMORY ALLOCATED (GPU#{_gpu})\t', int(torch.cuda.max_memory_allocated(int(_gpu))/(2**20)), 'MB')
+    for _gpu in gpu_list:
+        print(f'MAX MEMORY ALLOCATED (GPU#{_gpu})\t', int(torch.cuda.max_memory_allocated(int(_gpu))/(2**20)), 'MB')
 
 
 if __name__ == '__main__':
