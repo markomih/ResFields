@@ -38,11 +38,8 @@ class DySDF(BaseModel):
         if self.config.deform_net:
             self.deform_net = models.make(self.config.deform_net.name, self.config.hyper_net)
 
-        self.hyper_net = None
-        if self.config.hyper_net:
-            self.hyper_net = models.make(self.config.hyper_net.name, self.config.hyper_net)
-        self.hyper_codes = self.deform_codes
-
+        self.hyper_net = models.make(self.config.hyper_net.name, self.config.hyper_net)
+        self.config.sdf_net.d_in_2 = self.hyper_net.out_dim
         self.sdf_net = models.make(self.config.sdf_net.name, self.config.sdf_net)
         self.color_net = models.make(self.config.color_net.name, self.config.color_net)
         self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
@@ -72,17 +69,15 @@ class DySDF(BaseModel):
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
         _deform_codes = self.deform_codes[frame_id].view(1, -1, 1) if self.deform_codes is not None else None
-        _hyper_codes = self.hyper_codes[frame_id].view(1, -1, 1) if self.hyper_codes is not None else None
 
         def _query_sdf(pts):
             # pts: Tensor with shape (n_pts, 3). Dtype=float32.
             pts = pts.view(1, -1, 3).to(frame_id.device)
             deform_codes = _deform_codes.expand(-1, pts.shape[1], -1) if _deform_codes is not None else None
-            hyper_codes = _hyper_codes.expand(-1, pts.shape[1], -1) if _hyper_codes is not None else None
             pts_time = torch.full_like(pts[..., :1], time_step)
 
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
-            hyper_coord = pts_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, pts_time, self.alpha_ratio)
+            hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
                 
             sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=time_step, frame_id=frame_id)[..., :1]
             sdf = sdf.squeeze()
@@ -160,10 +155,9 @@ class DySDF(BaseModel):
 
             deform_codes = self.deform_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.deform_codes is not None else None
             ambient_codes = self.ambient_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.ambient_codes is not None else None
-            hyper_codes = self.hyper_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.hyper_codes is not None else None
 
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
-            hyper_coord = pts_time if self.hyper_net is None else self.hyper_net(hyper_codes, pts, pts_time, self.alpha_ratio)
+            hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
                 
             sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=rays_time.squeeze(-1), frame_id=frame_id.squeeze(-1))
             sdf, feature_vector = sdf_nn_output[..., :1], sdf_nn_output[..., 1:] # (n_rays, n_samples, 1), (n_rays, n_samples, F)

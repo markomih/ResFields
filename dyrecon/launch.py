@@ -11,10 +11,10 @@ sys.path.append(osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'resfi
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', required=True, help='path to config file')
 parser.add_argument('--gpu', default='-1', help='GPU(s) to be used. Set -1 to use all gpus.')
-parser.add_argument('--resume', default=None, help='path to the weights to be resumed')
-parser.add_argument('--resume_weights_only', action='store_true',
-    help='specify this argument to restore only the weights (w/o training states), e.g. --resume path/to/resume --resume_weights_only'
-)
+# parser.add_argument('--resume', default=None, help='path to the weights to be resumed')
+# parser.add_argument('--resume_weights_only', action='store_true',
+#     help='specify this argument to restore only the weights (w/o training states), e.g. --resume path/to/resume --resume_weights_only'
+# )
 
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('--train', action='store_true')
@@ -25,7 +25,7 @@ group.add_argument('--wandb_logger', action='store_true', default=False)
 
 parser.add_argument('--exp_dir', default='../exp')
 parser.add_argument('--verbose', action='store_true', help='if true, set logging level to DEBUG')
-
+parser.add_argument("--model_ckpt", type=str, default=None, help="path to model checkpoint")
 args, extras = parser.parse_known_args()
 
 import datasets
@@ -39,11 +39,11 @@ def main():
     config = load_config(args.config, cli_args=extras)
     config.cmd_args = vars(args)
 
-    config.trial_name = config.get('trial_name') or (config.tag + datetime.now().strftime('@%Y%m%d-%H%M%S'))
+    # config.trial_name = config.get('trial_name') or (config.tag + datetime.now().strftime('@%Y%m%d-%H%M%S'))
     config.exp_dir = config.get('exp_dir') or osp.join(args.exp_dir, config.name)
-    config.save_dir = config.get('save_dir') or osp.join(config.exp_dir, config.trial_name, 'save')
-    config.ckpt_dir = config.get('ckpt_dir') or osp.join(config.exp_dir, config.trial_name, 'ckpt')
-    config.config_dir = config.get('config_dir') or osp.join(config.exp_dir, config.trial_name, 'config')
+    config.save_dir = config.get('save_dir') or osp.join(config.exp_dir, 'save')
+    config.ckpt_dir = config.get('ckpt_dir') or osp.join(config.exp_dir, 'ckpt')
+    config.config_dir = config.get('config_dir') or osp.join(config.exp_dir, 'config')
 
     logger = logging.getLogger('pytorch_lightning')
     if args.verbose:
@@ -55,22 +55,25 @@ def main():
 
     dm = datasets.make(config.dataset.name, config.dataset)
     config.model.metadata = dm.get_metadata(config.dataset)
-    system = systems.make(config.system.name, config, load_from_checkpoint=None if not args.resume_weights_only else args.resume)
+    system = systems.make(config.system.name, config)
 
     callbacks = []
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=config.ckpt_dir,  **config.checkpoint)
+    callbacks.append(checkpoint_callback)
     if args.train:
         callbacks += [
-            pl.callbacks.ModelCheckpoint(
-                dirpath=config.ckpt_dir,
-                **config.checkpoint
-            ),
             pl.callbacks.LearningRateMonitor(logging_interval='step'),
             ConfigSnapshotCallback(
                 config, config.config_dir, use_version=False
             ),
             CustomProgressBar(refresh_rate=50),
-            # pl.callbacks.DeviceStatsMonitor(False),
         ]
+    last_ckpt = os.path.join(checkpoint_callback.dirpath, f"{checkpoint_callback.CHECKPOINT_NAME_LAST}.ckpt")
+    if not os.path.exists(last_ckpt):
+        last_ckpt = None
+    if args.model_ckpt is not None:  # overwrite last ckpt if specified model path
+        last_ckpt = args.model_ckpt
+    resume_from_checkpoint = config.get('resume_from_checkpoint', last_ckpt)
 
     loggers = []
     if args.train:
@@ -85,7 +88,7 @@ def main():
                 settings=wandb.Settings(start_method='fork')
                 )
         else:
-            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'), name=config.name, version=config.trial_name)
+            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'), name=config.name)
         loggers.append(_logger)
     
     trainer = pl.Trainer(
@@ -93,6 +96,7 @@ def main():
         accelerator='gpu',
         # accelerator='cpu',
         callbacks=callbacks,
+        resume_from_checkpoint=resume_from_checkpoint,
         logger=loggers,
         # strategy='ddp',  # TIP: disable ddp for easier debugging with pdb
         strategy='ddp_find_unused_parameters_false',  # TIP: disable ddp for easier debugging with pdb
@@ -101,17 +105,14 @@ def main():
     )
 
     if args.train:
-        if args.resume and not args.resume_weights_only:
-            trainer.fit(system, datamodule=dm, ckpt_path=args.resume)
-        else:
-            trainer.fit(system, datamodule=dm)
+        trainer.fit(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
         trainer.test(system, datamodule=dm)
     elif args.validate:
-        trainer.validate(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.validate(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
     elif args.test:
-        trainer.test(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.test(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
     elif args.predict:
-        trainer.predict(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
 
     # for _gpu in gpu_list:
     #     print(f'MAX MEMORY ALLOCATED (GPU#{_gpu})\t', int(torch.cuda.max_memory_allocated(int(_gpu))/(2**20)), 'MB')

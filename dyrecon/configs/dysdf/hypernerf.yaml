@@ -1,0 +1,23 @@
+trial_name: hypernerf
+defaults:
+  - base.yaml
+model:
+  deform_dim: 64
+  deform_net:
+    name: deformation_SE3Field
+    d_feature: ${model.deform_dim}
+    d_in: 3
+    skip_in: []
+    multires: 6
+
+  hyper_net:
+    name: topo_network
+    d_feature: ${model.deform_dim}
+    d_in: 3
+    d_out: 2
+    d_hidden: 64
+    n_layers: 7
+    skip_in: [5]
+    multires: 6
+    bias: 0.0
+    weight_norm: True

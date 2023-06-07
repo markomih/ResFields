@@ -287,3 +287,114 @@ class LaplaceDensity(BaseModel):  # alpha * Laplace(loc=0, scale=beta).cdf(-sdf)
 
         alpha = 1 / beta
         return alpha * (0.5 + 0.5 * sdf.sign() * torch.expm1(-sdf.abs() / beta))
+
+class HyperNetwork(BaseModel):
+    def setup(self):
+        self.d_in = self.config.d_in
+        self.multires_out = self.config.multires_out
+        self.out_dim = self.d_in
+        if self.multires_out > 0:
+            self.embed_fn, self.out_dim = get_embedder(self.multires_out, input_dims=self.d_in)
+        else:
+            self.embed_fn = None
+
+    def _forward(self, deformation_code, input_pts, input_time, alpha_ratio):
+        raise NotImplementedError
+
+    def forward(self, deformation_code, input_pts, input_time, alpha_ratio):
+        if self.d_in == 0:
+            return None
+        out = self._forward(deformation_code, input_pts, input_time, alpha_ratio)
+        if self.embed_fn is not None:
+            out = self.embed_fn(out, alpha_ratio)
+        return out
+
+@models.register('hyper_time_network')
+class HyperTimeNetwork(HyperNetwork):
+    def _forward(self, deformation_code, input_pts, input_time, alpha_ratio):
+        return input_time
+
+@models.register('hyper_cond_network')
+class HyperCondNetwork(HyperNetwork):
+
+    def _forward(self, deformation_code, input_pts, input_time, alpha_ratio):
+        return deformation_code
+
+@models.register('hyper_topo_network')
+class TopoNetwork(HyperNetwork):
+    # Adapted from NDR
+    def setup(self):
+        super().setup()
+        d_feature = self.config.d_feature
+        d_in = self.config.d_in
+        d_out = self.config.d_out
+        d_hidden = self.config.d_hidden
+        n_layers = self.config.n_layers
+        skip_in = self.config.skip_in 
+        multires = self.config.multires
+        bias = self.config.bias 
+        weight_norm = self.config.weight_norm
+        
+        dims_in = d_in
+        dims = [d_in + d_feature] + [d_hidden for _ in range(n_layers)] + [d_out]
+
+        self.embed_fn_fine = None
+
+        if multires > 0:
+            embed_fn, input_ch = get_embedder(multires, input_dims=d_in)
+            self.embed_fn_fine = embed_fn
+            dims_in = input_ch
+            dims[0] = input_ch + d_feature
+
+        self.num_layers = len(dims)
+        self.skip_in = skip_in
+
+        for l in range(0, self.num_layers - 1):
+            if l + 1 in self.skip_in:
+                out_dim = dims[l + 1] - dims_in
+            else:
+                out_dim = dims[l + 1]
+
+            lin = nn.Linear(dims[l], out_dim)
+
+            if l == self.num_layers - 2:
+                torch.nn.init.normal_(lin.weight, mean=0.0, std=1e-5)
+                torch.nn.init.constant_(lin.bias, bias)
+            elif multires > 0 and l == 0:
+                torch.nn.init.constant_(lin.bias, 0.0)
+                torch.nn.init.constant_(lin.weight[:, d_in:], 0.0)
+                torch.nn.init.normal_(lin.weight[:, :d_in], 0.0, np.sqrt(2) / np.sqrt(out_dim))
+            elif multires > 0 and l in self.skip_in:
+                torch.nn.init.constant_(lin.bias, 0.0)
+                torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
+                torch.nn.init.constant_(lin.weight[:, -(dims_in - d_in):], 0.0)
+            else:
+                torch.nn.init.constant_(lin.bias, 0.0)
+                torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
+
+            if weight_norm:
+                lin = nn.utils.weight_norm(lin)
+
+            setattr(self, "lin" + str(l), lin)
+        
+        self.activation = nn.Softplus(beta=100)
+
+
+    def _forward(self, deformation_code, input_pts, input_time, alpha_ratio):
+        if self.embed_fn_fine is not None:
+            # Anneal
+            input_pts = self.embed_fn_fine(input_pts, alpha_ratio)
+        x = torch.cat([input_pts, deformation_code], dim=-1)
+        for l in range(0, self.num_layers - 1):
+            lin = getattr(self, "lin" + str(l))
+
+            if l in self.skip_in:
+                x = torch.cat([x, input_pts], 1) / np.sqrt(2)
+
+            x = lin(x)
+
+            if l < self.num_layers - 2:
+                x = self.activation(x)
+
+        return x
+

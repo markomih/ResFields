@@ -1,5 +1,6 @@
-name: dysdf-${dataset.scene}
+trial_name: base
 tag: ''
+name: dysdf/${dataset.scene}/${trial_name}${tag}
 seed: 42
 
 dataset:
@@ -36,14 +37,17 @@ model:
   sampling:
     strategy: balanced
     train_num_rays: 1100 #6144
-    batch_image_sampling: true
     n_samples: 256
     n_importance: 0
     randomized: true
     ray_chunk: ${model.sampling.train_num_rays}
 
   deform_net: null
-  hyper_net: null
+  hyper_net:
+    name: hyper_time_network
+    d_in: 0
+    multires_out: 0
+
   sdf_net:
     name: sdf_network
     n_frames: 100
@@ -51,12 +55,12 @@ model:
     composition_rank: 10
     d_out: 129
     d_in_1: 3
-    d_in_2: 1
+    # d_in_2: 1
     d_hidden: 128
     n_layers: 8
     skip_in: [4]
     multires: 6
-    multires_topo: 6
+    multires_topo: 0
     bias: 0.5
     scale: 1.0
     geometric_init: True
@@ -93,10 +97,10 @@ system:
 
 checkpoint:
   save_top_k: -1
-  every_n_train_steps: ${trainer.max_steps}
-
+  every_n_train_steps: 20000
+  save_last: True
 trainer:
-  max_steps: 250000
+  max_steps: 400000
   log_every_n_steps: 100
   num_sanity_val_steps: 0
   val_check_interval: 2500 #10000

@@ -1,0 +1,10 @@
+trial_name: nerfies
+defaults:
+  - base.yaml
+model:
+  deform_net:
+    name: deformation_SE3Field
+    d_feature: 64
+    d_in: 3
+    skip_in: []
+    multires: 6

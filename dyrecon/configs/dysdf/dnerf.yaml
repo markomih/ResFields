@@ -1,0 +1,12 @@
+trial_name: dnerf
+defaults:
+  - base.yaml
+model:
+  deform_net:
+    name: deformation_DNeRF
+    d_time: 1
+    d_in: 3
+    multires: 0
+    depth: 8
+    width: 256
+    skips: [4,]

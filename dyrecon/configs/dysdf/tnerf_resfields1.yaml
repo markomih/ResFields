@@ -1,8 +1,0 @@
-name: dysdf-${dataset.scene}-tnerf_resfields1
-defaults:
-  - base.yaml
-
-model:
-  sdf_net:
-    independent_layers: [1]
-    composition_rank: 10

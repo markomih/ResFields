@@ -1,0 +1,9 @@
+trial_name: dynerf
+defaults:
+  - base.yaml
+model:
+  deform_dim: 64
+  hyper_net:
+    name: hyper_cond_network
+    d_in: ${model.deform_dim}
+    multires_out: 0

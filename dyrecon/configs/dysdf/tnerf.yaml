@@ -1,3 +1,8 @@
-name: dysdf-${dataset.scene}-tnerf
+trial_name: tnerf
 defaults:
   - base.yaml
+model:
+  hyper_net:
+    name: hyper_time_network
+    d_in: 1
+    multires_out: 6
