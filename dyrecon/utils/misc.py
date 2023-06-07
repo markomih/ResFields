@@ -18,17 +18,6 @@ OmegaConf.register_new_resolver('instant_ngp_scale', lambda n_levels, base_res, 
 OmegaConf.register_new_resolver('torch', lambda cmd: eval(f'torch.{cmd}'))
 # ======================================================= #
 
-def vector_cat(val_list: list, dim=0):
-    if isinstance(val_list[0], list):
-        val = list(itertools.chain.from_iterable(val_list))
-    elif isinstance(val_list[0], np.ndarray):
-        val = np.concatenate(val_list, axis=dim)
-    elif torch.is_tensor(val_list[0]):
-        val = torch.cat(val_list, dim=dim)
-    else:
-        val = val_list
-    return val
-
 def get_rank() -> int:
     # SLURM_PROCID can be set even if SLURM is not managing the multiprocessing,
     # therefore LOCAL_RANK needs to be checked first
@@ -62,7 +51,7 @@ def plot_heatmap(data: np.ndarray, min_val=-3, max_val=3, resize_ratio: int=2):
 
 def load_config(yaml_file, cli_args=[]):
     yaml_conf = OmegaConf.load(yaml_file)
-    if yaml_conf.defaults is not None:
+    if yaml_conf.get('defaults', False):
         dir_name = os.path.dirname(yaml_file)
         defaults = [OmegaConf.load(os.path.join(dir_name, f)) for f in yaml_conf.defaults]
         defaults = OmegaConf.merge(*defaults)

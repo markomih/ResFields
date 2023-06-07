@@ -75,8 +75,6 @@ class Linear(torch.nn.Linear):
         if self.rank == 0 or self.capacity == 0:
             return torch.nn.functional.linear(input, self.weight, self.bias)
 
-        assert input_time is not None, "time must be provided for ResField"
-
         weight = self._get_delta_weight(input_time, frame_id) # B, F_out, F_in
         if weight.shape[0] == 1 or len(weight.shape) == 2:
             return torch.nn.functional.linear(input, weight.squeeze(0), self.bias)

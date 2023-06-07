@@ -11,7 +11,7 @@ import torch.nn.functional as F
 # from torch.utils.data import Dataset, DataLoader, IterableDataset
 
 import datasets
-from utils.misc import get_rank, vector_cat
+from utils.misc import get_rank
 
 # from . import utils
 # This function is borrowed from IDR: https://github.com/lioryariv/idr

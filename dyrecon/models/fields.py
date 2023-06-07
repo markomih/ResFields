@@ -398,3 +398,57 @@ class TopoNetwork(HyperNetwork):
 
         return x
 
+@models.register('siren_mlp')
+class SirenMLP(BaseModel):
+    def setup(self):
+        in_features = self.config.in_features
+        out_features = self.config.out_features
+        hidden_features = self.config.hidden_features
+        num_hidden_layers = self.config.num_hidden_layers
+        # resfield parameters
+        composition_rank = self.config.composition_rank
+        independent_layers = self.config.independent_layers
+        capacity = self.config.capacity
+        mode = self.config.get('mode', 'lookup')
+
+        dims = [in_features] + [hidden_features for _ in range(num_hidden_layers)] + [out_features]
+        self.nl = Sine()
+        self.net = []
+        for i in range(len(dims) - 1):
+            _rank = composition_rank if i in independent_layers else 0
+            _capacity = capacity if i in independent_layers else 0
+
+            lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode)
+            lin.apply(self.first_layer_sine_init if i == 0 else self.sine_init)
+            self.net.append(lin)
+        self.net = torch.nn.ModuleList(self.net)
+        print(self)
+
+    @staticmethod
+    def sine_init(m):
+        with torch.no_grad():
+            if hasattr(m, 'weight'):
+                num_input = m.weight.size(-1)
+                # See supplement Sec. 1.5 for discussion of factor 30
+                m.weight.uniform_(-np.sqrt(6 / num_input) / 30, np.sqrt(6 / num_input) / 30)
+    
+    @staticmethod
+    def first_layer_sine_init(m):
+        with torch.no_grad():
+            if hasattr(m, 'weight'):
+                num_input = m.weight.size(-1)
+                # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
+                m.weight.uniform_(-1 / num_input, 1 / num_input)
+
+    def forward(self, coords, frame_id=None):
+        x = coords
+        for lin in self.net[:-1]:
+            x = self.nl(lin(x, frame_id=frame_id))
+        x = self.net[-1](x, frame_id=frame_id)
+        return x
+
+        
+class Sine(nn.Module):
+    def forward(self, input):
+        # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
+        return torch.sin(30 * input)

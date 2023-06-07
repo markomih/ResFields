@@ -93,22 +93,22 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         pass
     """
     
-    def validation_epoch_end(self, out):
-        """
-        Gather metrics from all devices, compute mean.
-        Purge repeated results using data index.
-        """
-        raise NotImplementedError
+    # def validation_epoch_end(self, out):
+    #     """
+    #     Gather metrics from all devices, compute mean.
+    #     Purge repeated results using data index.
+    #     """
+    #     raise NotImplementedError
 
     def test_step(self, batch, batch_idx):        
         raise NotImplementedError
     
-    def test_epoch_end(self, out):
-        """
-        Gather metrics from all devices, compute mean.
-        Purge repeated results using data index.
-        """
-        raise NotImplementedError
+    # def test_epoch_end(self, out):
+    #     """
+    #     Gather metrics from all devices, compute mean.
+    #     Purge repeated results using data index.
+    #     """
+    #     raise NotImplementedError
 
     def configure_optimizers(self):
         optim = getattr(torch.optim, self.config.system.optimizer.name)

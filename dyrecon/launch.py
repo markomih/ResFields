@@ -109,6 +109,7 @@ def main():
     if args.train:
         trainer.fit(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
         trainer.test(system, datamodule=dm)
+        trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
     elif args.validate:
         trainer.validate(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
     elif args.test:
