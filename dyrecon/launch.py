@@ -91,7 +91,7 @@ def main():
                 )
         else:
             os.makedirs(osp.join(config.exp_dir, 'runs'), exist_ok=True)
-            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'), name=config.name)
+            _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'))
         loggers.append(_logger)
     
     trainer = pl.Trainer(
