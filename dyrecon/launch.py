@@ -44,6 +44,7 @@ def main():
     config.save_dir = config.get('save_dir') or osp.join(config.exp_dir, 'save')
     config.ckpt_dir = config.get('ckpt_dir') or osp.join(config.exp_dir, 'ckpt')
     config.config_dir = config.get('config_dir') or osp.join(config.exp_dir, 'config')
+    os.makedirs(config.save_dir, exist_ok=True)
 
     logger = logging.getLogger('pytorch_lightning')
     if args.verbose:
@@ -88,6 +89,7 @@ def main():
                 settings=wandb.Settings(start_method='fork')
                 )
         else:
+            os.makedirs(osp.join(config.exp_dir, 'runs'), exist_ok=True)
             _logger = pl.loggers.TensorBoardLogger(osp.join(config.exp_dir, 'runs'), name=config.name)
         loggers.append(_logger)
     
