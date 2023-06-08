@@ -211,8 +211,8 @@ class DySDFSystem(BaseSystem):
     # def on_validation_epoch_end(self, out, prefix='val'):
     def on_validation_epoch_end(self, prefix='val'):
         # out = self.all_gather(out)
-        out = self.all_gather(self.validation_step_outputs if prefix == 'val' else self.test_step_outputs)
         if self.trainer.is_global_zero:
+            out = self.all_gather(self.validation_step_outputs if prefix == 'val' else self.test_step_outputs)
             metrics_dict = {}
             out_set = {}
             metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
@@ -230,7 +230,6 @@ class DySDFSystem(BaseSystem):
                 metrics_dict[key] = float(m_val.detach().cpu())
                 self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True, sync_dist=True)
             return metrics_dict
-        return out
 
     def test_step(self, batch, batch_idx):
         frame_id = batch['frame_id']
@@ -244,8 +243,8 @@ class DySDFSystem(BaseSystem):
 
     # def on_test_epoch_end(self, out):
     def on_test_epoch_end(self, prefix='test'):
-        metrics_dict = self.on_validation_epoch_end(prefix=prefix)
         if self.trainer.is_global_zero:
+            metrics_dict = self.on_validation_epoch_end(prefix=prefix)
             res_path = self.get_save_path(f'results_it{self.global_step:06d}-{prefix}.yaml')
             with open(res_path, 'w') as file:
                 yaml.dump(metrics_dict, file)
