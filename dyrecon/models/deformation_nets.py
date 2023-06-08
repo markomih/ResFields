@@ -3,13 +3,14 @@ import models
 from models.base import BaseModel
 from .fields import get_embedder
 import torch.nn as nn
+import numpy as np
 
 class BaseDeformNetwork(BaseModel):
     def forward(self, deformation_code, input_pts, alpha_ratio, time_step=None):
         raise NotImplementedError
 
 # Deform
-models.register('deformation_NDR')
+@models.register('deformation_NDR')
 class DeformNetwork(BaseDeformNetwork):
     def setup(self):
         d_feature = self.config.d_feature
@@ -125,7 +126,6 @@ class DeformNetwork(BaseDeformNetwork):
 
 
     def forward(self, deformation_code, input_pts, alpha_ratio, time_step=None):
-        batch_size = input_pts.shape[0]
         x = input_pts
         for i_b in range(self.n_blocks):
             form = (i_b // 3) % 2
@@ -133,30 +133,29 @@ class DeformNetwork(BaseDeformNetwork):
 
             lin = getattr(self, "lin"+str(i_b)+"_c")
             deform_code_ib = lin(deformation_code) + deformation_code
-            # deform_code_ib = deform_code_ib.repeat(batch_size, 1)
             # part a
             if form == 0:
                 # zyx
                 if mode == 0:
-                    x_focus = x[:, [2]]
-                    x_other = x[:, [0,1]]
+                    x_focus = x[..., [2]]
+                    x_other = x[..., [0,1]]
                 elif mode == 1:
-                    x_focus = x[:, [1]]
-                    x_other = x[:, [0,2]]
+                    x_focus = x[..., [1]]
+                    x_other = x[..., [0,2]]
                 else:
-                    x_focus = x[:, [0]]
-                    x_other = x[:, [1,2]]
+                    x_focus = x[..., [0]]
+                    x_other = x[..., [1,2]]
             else:
                 # xyz
                 if mode == 0:
-                    x_focus = x[:, [0]]
-                    x_other = x[:, [1,2]]
+                    x_focus = x[..., [0]]
+                    x_other = x[..., [1,2]]
                 elif mode == 1:
-                    x_focus = x[:, [1]]
-                    x_other = x[:, [0,2]]
+                    x_focus = x[..., [1]]
+                    x_other = x[..., [0,2]]
                 else:
-                    x_focus = x[:, [2]]
-                    x_other = x[:, [0,1]]
+                    x_focus = x[..., [2]]
+                    x_other = x[..., [0,1]]
             x_ori = x_other # xy
             if self.embed_fn_1 is not None:
                 # Anneal
@@ -183,31 +182,41 @@ class DeformNetwork(BaseDeformNetwork):
             for l in range(0, self.num_layers_b - 1):
                 lin = getattr(self, "lin"+str(i_b)+"_b_"+str(l))
                 if l in self.skip_in:
-                    x = torch.cat([x, x_focus], 1) / np.sqrt(2)
+                    x = torch.cat([x, x_focus], -1) / np.sqrt(2)
                 x = lin(x)
                 if l < self.num_layers_b - 2:
                     x = self.activation(x)
 
-            rot_2d = euler2rot_2dinv(x[:, [0]])
-            trans_2d = x[:, 1:]
-            x_other = torch.bmm(rot_2d, (x_ori - trans_2d)[...,None]).squeeze(-1)
+            rot_2d = self.euler2rot_2dinv(x[..., [0]])
+            trans_2d = x[..., 1:]
+            x_other = (rot_2d @ (x_ori - trans_2d)[..., None]).squeeze(-1)
             if form == 0:
                 if mode == 0:
                     x = torch.cat([x_other, x_focus_ori], dim=-1)
                 elif mode == 1:
-                    x = torch.cat([x_other[:,[0]], x_focus_ori, x_other[:,[1]]], dim=-1)
+                    x = torch.cat([x_other[...,[0]], x_focus_ori, x_other[...,[1]]], dim=-1)
                 else:
                     x = torch.cat([x_focus_ori, x_other], dim=-1)
             else:
                 if mode == 0:
                     x = torch.cat([x_focus_ori, x_other], dim=-1)
                 elif mode == 1:
-                    x = torch.cat([x_other[:,[0]], x_focus_ori, x_other[:,[1]]], dim=-1)
+                    x = torch.cat([x_other[...,[0]], x_focus_ori, x_other[...,[1]]], dim=-1)
                 else:
                     x = torch.cat([x_other, x_focus_ori], dim=-1)
 
         return x
 
+    @staticmethod
+    def euler2rot_2dinv(euler_angle):
+        # (B, S, 1) -> (B, S, 2, 2)
+        theta = euler_angle.unsqueeze(-1) # B, S, 1, 1
+        rot = torch.cat((
+            torch.cat((theta.cos(), -theta.sin()), -2),
+            torch.cat((theta.sin(), theta.cos()), -2),
+        ), -1)
+
+        return rot
 
     def inverse(self, deformation_code, input_pts, alpha_ratio, time_step=None):
         batch_size = input_pts.shape[0]
@@ -224,25 +233,25 @@ class DeformNetwork(BaseDeformNetwork):
             if form == 0:
                 # axis: z -> y -> x
                 if mode == 0:
-                    x_focus = x[:, [0,1]]
-                    x_other = x[:, [2]]
+                    x_focus = x[..., [0,1]]
+                    x_other = x[..., [2]]
                 elif mode == 1:
-                    x_focus = x[:, [0,2]]
-                    x_other = x[:, [1]]
+                    x_focus = x[..., [0,2]]
+                    x_other = x[..., [1]]
                 else:
-                    x_focus = x[:, [1,2]]
-                    x_other = x[:, [0]]
+                    x_focus = x[..., [1,2]]
+                    x_other = x[..., [0]]
             else:
                 # axis: x -> y -> z
                 if mode == 0:
-                    x_focus = x[:, [1,2]]
-                    x_other = x[:, [0]]
+                    x_focus = x[..., [1,2]]
+                    x_other = x[..., [0]]
                 elif mode == 1:
-                    x_focus = x[:, [0,2]]
-                    x_other = x[:, [1]]
+                    x_focus = x[..., [0,2]]
+                    x_other = x[..., [1]]
                 else:
-                    x_focus = x[:, [0,1]]
-                    x_other = x[:, [2]]
+                    x_focus = x[..., [0,1]]
+                    x_other = x[..., [2]]
             x_ori = x_other # z'
             if self.embed_fn_2 is not None:
                 # Anneal
@@ -257,8 +266,8 @@ class DeformNetwork(BaseDeformNetwork):
                 if l < self.num_layers_b - 2:
                     x = self.activation(x)
 
-            rot_2d = euler2rot_2d(x[:, [0]])
-            trans_2d = x[:, 1:]
+            rot_2d = euler2rot_2d(x[..., [0]])
+            trans_2d = x[..., 1:]
             x_focus = torch.bmm(rot_2d, x_focus[...,None]).squeeze(-1) + trans_2d
 
             # part a
@@ -281,14 +290,14 @@ class DeformNetwork(BaseDeformNetwork):
                 if mode == 0:
                     x = torch.cat([x_focus_ori, x_other], dim=-1)
                 elif mode == 1:
-                    x = torch.cat([x_focus_ori[:,[0]], x_other, x_focus_ori[:,[1]]], dim=-1)
+                    x = torch.cat([x_focus_ori[...,[0]], x_other, x_focus_ori[...,[1]]], dim=-1)
                 else:
                     x = torch.cat([x_other, x_focus_ori], dim=-1)
             else:
                 if mode == 0:
                     x = torch.cat([x_other, x_focus_ori], dim=-1)
                 elif mode == 1:
-                    x = torch.cat([x_focus_ori[:,[0]], x_other, x_focus_ori[:,[1]]], dim=-1)
+                    x = torch.cat([x_focus_ori[...,[0]], x_other, x_focus_ori[...,[1]]], dim=-1)
                 else:
                     x = torch.cat([x_focus_ori, x_other], dim=-1)
 
@@ -296,7 +305,7 @@ class DeformNetwork(BaseDeformNetwork):
 
 
 # Models
-models.register('deformation_DNeRF')
+@models.register('deformation_DNeRF')
 class DeformDNeRF(BaseDeformNetwork):
     """ Model deformation like in DNeRF 
     """
@@ -329,7 +338,7 @@ class DeformDNeRF(BaseDeformNetwork):
         return input_pts + dx
 
 
-models.register('deformation_SE3Field')
+@models.register('deformation_SE3Field')
 class SE3Field(BaseDeformNetwork):
     """ Model deformation like in Nerfies/HyperNeRF. Network that predicts warps as an SE(3) field.
 
@@ -352,12 +361,12 @@ class SE3Field(BaseDeformNetwork):
 
         activation = self.config.get('activation', torch.relu)
         skips: tuple = self.config.get('skips', (4,))
-        trunk_depth: int = self.config.get(6)
-        trunk_width: int = self.config.get(128)
-        rotation_depth: int = self.config.get(0)
-        rotation_width: int = self.config.get(128)
-        pivot_depth: int = self.config.get(0)
-        pivot_width: int = self.config.get(128)
+        trunk_depth: int = self.config.get('trunk_depth', 6)
+        trunk_width: int = self.config.get('trunk_width', 128)
+        rotation_depth: int = self.config.get('rotation_depth', 0)
+        rotation_width: int = self.config.get('rotation_width', 128)
+        pivot_depth: int = self.config.get('pivot_depth', 0)
+        pivot_width: int = self.config.get('pivot_width', 128)
 
         if multires > 0:
             self.embed_fn, d_in = get_embedder(multires, input_dims=d_in)
@@ -399,7 +408,7 @@ class SE3Field(BaseDeformNetwork):
         w = w / (theta+1e-6)
         v = v / (theta+1e-6)
         screw_axis = torch.cat([w, v], axis=-1)
-        transform_R, transform_t = self.exp3(screw_axis, theta)
+        transform_R, transform_t = self.exp3(screw_axis, theta) # B,S,3,3; B,S,3
 
         warped_points = (transform_R @ points.unsqueeze(-1)).squeeze(-1) + transform_t
 
@@ -407,6 +416,10 @@ class SE3Field(BaseDeformNetwork):
 
     @staticmethod
     def exp3(x, theta): # x.shape = [B,6]; theta.shape=[B,1]
+        B, _S, dim = x.shape
+        B, _S, _ = theta.shape
+        x, theta = x.view(-1, 6), theta.view(-1, 1)
+
         # x_ = x.view(-1, 6)
         w, v = x.split([3, 3], dim=1)
         W = SE3Field.skew_mat(w)  # B,3,3
@@ -424,7 +437,8 @@ class SE3Field(BaseDeformNetwork):
 
         _p = I*theta + (1.0 - cos_t)*W + (theta - sin_t)*S
         p = torch.bmm(_p, v.reshape(-1, 3, 1))
-        return R, p.reshape(-1, 3)
+        p = p.reshape(-1, 3)
+        return R.view(B, _S, *R.shape[1:]), p.view(B, _S, *p.shape[1:])
 
     @staticmethod
     def skew_mat(x: torch.tensor):

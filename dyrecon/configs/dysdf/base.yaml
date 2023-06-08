@@ -46,6 +46,7 @@ model:
   hyper_net:
     name: hyper_time_network
     d_in: 0
+    d_out: 0
     multires_out: 0
 
   sdf_net:

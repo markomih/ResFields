@@ -8,5 +8,5 @@ model:
     d_in: 3
     multires: 0
     depth: 8
-    width: 256
+    width: 128
     skips: [4,]

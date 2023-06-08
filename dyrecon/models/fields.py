@@ -211,7 +211,7 @@ class ColorNetwork(BaseModel):
         d_hidden = self.config.d_hidden
         n_layers = self.config.n_layers
 
-        weight_norm = self.config.get('weight_norm', True)
+        weight_norm = self.config.get('weight_norm', False)
         d_out = self.config.get('d_out', 3)
         multires_view = self.config.get('multires_view', 0)
 
@@ -292,9 +292,9 @@ class HyperNetwork(BaseModel):
     def setup(self):
         self.d_in = self.config.d_in
         self.multires_out = self.config.multires_out
-        self.out_dim = self.d_in
+        self.out_dim = self.config.d_out
         if self.multires_out > 0:
-            self.embed_fn, self.out_dim = get_embedder(self.multires_out, input_dims=self.d_in)
+            self.embed_fn, self.out_dim = get_embedder(self.multires_out, input_dims=self.config.d_out)
         else:
             self.embed_fn = None
 
@@ -389,7 +389,7 @@ class TopoNetwork(HyperNetwork):
             lin = getattr(self, "lin" + str(l))
 
             if l in self.skip_in:
-                x = torch.cat([x, input_pts], 1) / np.sqrt(2)
+                x = torch.cat([x, input_pts], -1) / np.sqrt(2)
 
             x = lin(x)
 

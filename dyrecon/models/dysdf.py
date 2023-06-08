@@ -16,6 +16,7 @@ class DySDF(BaseModel):
         self.ray_chunk = self.config.sampling.ray_chunk
         self.background_color = None
         self.alpha_ratio = 1.0
+        self.n_frames = self.config.metadata.n_frames
         
         self.register_buffer('scene_aabb', torch.as_tensor(self.config.metadata.scene_aabb, dtype=torch.float32))
         
@@ -26,20 +27,24 @@ class DySDF(BaseModel):
         self.ambient_dim = self.config.get('ambient_dim', 0)
         self.deform_dim = self.config.get('deform_dim', 0) 
 
-        self.ambient_codes = None
         if self.ambient_dim > 0:
-            self.register_parameter('ambient_codes', torch.nn.Parameter(torch.randn(self.time_max+1, self.ambient_dim)))
+            self.register_parameter('ambient_codes', torch.nn.Parameter(torch.randn(self.n_frames, self.ambient_dim)))
+        else:
+            self.ambient_codes = None
 
-        self.deform_codes = None
         if self.deform_dim > 0:
-            self.register_parameter('deform_codes', torch.nn.Parameter(torch.randn(self.time_max+1, self.deform_dim)))
+            self.deform_codes = torch.nn.Parameter(torch.randn(self.n_frames, self.deform_dim))
+        else:
+            self.deform_codes = None
 
-        self.deform_net = None
         if self.config.deform_net:
-            self.deform_net = models.make(self.config.deform_net.name, self.config.hyper_net)
+            self.deform_net = models.make(self.config.deform_net.name, self.config.deform_net)
+        else:
+            self.deform_net = None
 
         self.hyper_net = models.make(self.config.hyper_net.name, self.config.hyper_net)
         self.config.sdf_net.d_in_2 = self.hyper_net.out_dim
+        self.config.sdf_net.n_frames = self.n_frames
         self.sdf_net = models.make(self.config.sdf_net.name, self.config.sdf_net)
         self.color_net = models.make(self.config.color_net.name, self.config.color_net)
         self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
@@ -68,12 +73,15 @@ class DySDF(BaseModel):
 
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        _deform_codes = self.deform_codes[frame_id].view(1, -1, 1) if self.deform_codes is not None else None
+        _deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
 
         def _query_sdf(pts):
             # pts: Tensor with shape (n_pts, 3). Dtype=float32.
             pts = pts.view(1, -1, 3).to(frame_id.device)
-            deform_codes = _deform_codes.expand(-1, pts.shape[1], -1) if _deform_codes is not None else None
+            deform_codes = None
+            if _deform_codes is not None:
+                deform_codes = _deform_codes.view(-1, 1, _deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
+
             pts_time = torch.full_like(pts[..., :1], time_step)
 
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
@@ -152,9 +160,12 @@ class DySDF(BaseModel):
                 pts = pts.clone()
 
             pts.requires_grad_(True)
-
-            deform_codes = self.deform_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.deform_codes is not None else None
-            ambient_codes = self.ambient_codes[frame_id].unsqueeze(1).expand(-1, pts.shape[1], -1) if self.ambient_codes is not None else None
+            deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
+            if deform_codes is not None:
+                deform_codes = deform_codes.view(-1, 1, deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
+            ambient_codes = self.ambient_codes[frame_id] if self.ambient_codes is not None else None
+            if ambient_codes is not None:
+                ambient_codes = ambient_codes.view(-1, 1, ambient_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
 
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
             hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)

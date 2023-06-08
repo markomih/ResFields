@@ -189,12 +189,15 @@ class DySDFDataModule(pl.LightningDataModule):
     @staticmethod
     def get_metadata(config):
         aabb = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
+        n_imgs = glob(os.path.join(config.data_root, config.train_split[0], 'rgb', '*.png'))
+        n_frames = min(config.load_time_steps, len(n_imgs))
         if os.path.exists(os.path.join(config.data_root, 'aabb.txt')):
             with open(os.path.join(config.data_root, 'aabb.txt'), 'r') as f:
                 aabb = f.read().strip()
             aabb = eval(aabb)
         return {
             'scene_aabb': aabb,
+            'n_frames': n_frames,
         }
         # return {
         #     'near': 0.1, 'far': 5.0,
