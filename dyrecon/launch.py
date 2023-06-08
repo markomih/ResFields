@@ -4,8 +4,6 @@ import torch
 import time
 import logging
 import argparse
-import wandb
-from datetime import datetime
 import sys
 sys.path.append(osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'resfields'))
 
@@ -17,12 +15,12 @@ parser.add_argument('--gpu', default='-1', help='GPU(s) to be used. Set -1 to us
 #     help='specify this argument to restore only the weights (w/o training states), e.g. --resume path/to/resume --resume_weights_only'
 # )
 
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('--train', action='store_true')
-group.add_argument('--validate', action='store_true')
-group.add_argument('--test', action='store_true')
-group.add_argument('--predict', action='store_true')
-group.add_argument('--wandb_logger', action='store_true', default=False)
+# group = parser.add_mutually_exclusive_group(required=True)
+parser.add_argument('--train', action='store_true', default=False)
+parser.add_argument('--validate', action='store_true', default=False)
+parser.add_argument('--test', action='store_true', default=False)
+parser.add_argument('--predict', action='store_true', default=False)
+parser.add_argument('--wandb_logger', action='store_true', default=False)
 
 parser.add_argument('--exp_dir', default='../exp')
 parser.add_argument('--verbose', action='store_true', help='if true, set logging level to DEBUG')
@@ -80,6 +78,7 @@ def main():
     loggers = []
     if args.train:
         if args.wandb_logger:
+            import wandb
             _logger = pl.loggers.WandbLogger(
                 name=config.name,
                 project='resfields',
@@ -105,16 +104,15 @@ def main():
         # strategy='find_unused_parameters=True',  # TIP: disable ddp for easier debugging with pdb
         **config.trainer
     )
-
     if args.train:
         trainer.fit(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
         trainer.test(system, datamodule=dm)
-        trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
-    elif args.validate:
+        # trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
+    if args.validate:
         trainer.validate(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
-    elif args.test:
+    if args.test:
         trainer.test(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
-    elif args.predict:
+    if args.predict:
         trainer.predict(system, datamodule=dm, ckpt_path=resume_from_checkpoint)
 
     for _gpu in gpu_list:

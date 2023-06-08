@@ -12,8 +12,7 @@ dataset:
     - cam_train_6
     - cam_train_8
   val_split: 
-    - cam_train_0
-    - cam_train_5
+    - cam_test
   test_split: ${dataset.val_split}
 
   name: dysdf_dataset
