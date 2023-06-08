@@ -55,7 +55,6 @@ def main():
 
     dm = datasets.make(config.dataset.name, config.dataset)
     config.model.metadata = dm.get_metadata(config.dataset)
-    system = systems.make(config.system.name, config)
 
     callbacks = []
     checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=config.ckpt_dir,  **config.checkpoint)
@@ -74,9 +73,7 @@ def main():
     if args.model_ckpt is not None:  # overwrite last ckpt if specified model path
         last_ckpt = args.model_ckpt
     resume_from_checkpoint = config.get('resume_from_checkpoint', last_ckpt)
-    if resume_from_checkpoint is not None:
-        print(f'Resuming from checkpoint: {resume_from_checkpoint}')
-        system = system.load_from_checkpoint(resume_from_checkpoint)
+    system = systems.make(config.system.name, config, resume_from_checkpoint)
 
     loggers = []
     if args.train:

@@ -12,6 +12,7 @@ def make(name, config, load_from_checkpoint=None):
     if load_from_checkpoint is None:
         system = systems[name](config)
     else:
+        print(f'Resuming from checkpoint: {load_from_checkpoint}')
         system = systems[name].load_from_checkpoint(load_from_checkpoint, strict=False, config=config)
     return system
 
