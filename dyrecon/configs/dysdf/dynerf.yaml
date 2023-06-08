@@ -6,4 +6,5 @@ model:
   hyper_net:
     name: hyper_cond_network
     d_in: ${model.deform_dim}
+    d_out: ${model.deform_dim}
     multires_out: 0
