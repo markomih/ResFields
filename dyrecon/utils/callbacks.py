@@ -3,7 +3,8 @@ import subprocess
 import shutil
 from utils.misc import dump_config
 
-from pytorch_lightning.callbacks.base import Callback
+# from pytorch_lightning.callbacks.base import Callback
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities.rank_zero import rank_zero_only, rank_zero_warn
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 import pytorch_lightning as pl

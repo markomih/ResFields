@@ -138,3 +138,4 @@ submodules/
 .virtual_documents/
 /exp
 wandb/
+/exp_owlii_benchmarking

@@ -208,8 +208,10 @@ class DySDFSystem(BaseSystem):
         stats_dict['index'] = batch['index']
         return stats_dict
 
-    def validation_epoch_end(self, out, prefix='val'):
-        out = self.all_gather(out)
+    # def on_validation_epoch_end(self, out, prefix='val'):
+    def on_validation_epoch_end(self, prefix='val'):
+        # out = self.all_gather(out)
+        out = self.all_gather(self.validation_step_outputs if prefix == 'val' else self.test_step_outputs)
         if self.trainer.is_global_zero:
             metrics_dict = {}
             out_set = {}
@@ -240,9 +242,9 @@ class DySDFSystem(BaseSystem):
             self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
         return self.validation_step(batch, batch_idx, prefix='test')
 
-    def test_epoch_end(self, out):
-        prefix = 'test'
-        metrics_dict = self.validation_epoch_end(out, prefix=prefix)
+    # def on_test_epoch_end(self, out):
+    def on_test_epoch_end(self, prefix='test'):
+        metrics_dict = self.on_validation_epoch_end(prefix=prefix)
         if self.trainer.is_global_zero:
             res_path = self.get_save_path(f'results_it{self.global_step:06d}-{prefix}.yaml')
             with open(res_path, 'w') as file:

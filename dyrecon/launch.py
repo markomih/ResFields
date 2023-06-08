@@ -74,6 +74,9 @@ def main():
     if args.model_ckpt is not None:  # overwrite last ckpt if specified model path
         last_ckpt = args.model_ckpt
     resume_from_checkpoint = config.get('resume_from_checkpoint', last_ckpt)
+    if resume_from_checkpoint is not None:
+        print(f'Resuming from checkpoint: {resume_from_checkpoint}')
+        system = system.load_from_checkpoint(resume_from_checkpoint)
 
     loggers = []
     if args.train:
@@ -97,7 +100,6 @@ def main():
         accelerator='gpu',
         # accelerator='cpu',
         callbacks=callbacks,
-        resume_from_checkpoint=resume_from_checkpoint,
         logger=loggers,
         # strategy='ddp',  # TIP: disable ddp for easier debugging with pdb
         strategy='ddp_find_unused_parameters_false',  # TIP: disable ddp for easier debugging with pdb
