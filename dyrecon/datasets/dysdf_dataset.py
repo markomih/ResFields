@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 import datasets
 from utils.misc import get_rank
-
+from utils.ray_utils import get_rays
 # from . import utils
 # This function is borrowed from IDR: https://github.com/lioryariv/idr
 def load_K_Rt_from_P(filename, P=None):
@@ -64,9 +64,11 @@ def parse_cam(scale_mats_np, world_mats_np):
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
 
 class DySDFDatasetBase():
-    def setup(self, config, camera_list):
+    def setup(self, config, camera_list, split):
         # self.config = config
         print('Load data: Begin')
+        self.split = split
+        self.sampling = config.get('sampling', None)
         load_time_steps = config.get('load_time_steps', 100000)
         # data_ids = config.get(f'{split}_ids', -1)
         def _sample(data_list: list):
@@ -110,12 +112,13 @@ class DySDFDatasetBase():
             _frame_ids.append(frame_ids)
             _directions.append(directions)
 
-        rank = get_rank()
-        self.all_c2w = torch.cat(_all_c2w, dim=0).to(rank)
-        self.all_images = torch.cat(_all_images, dim=0).to(rank)
-        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(rank)
-        self.frame_ids = torch.cat(_frame_ids, dim=0).to(rank)
-        self.directions = torch.cat(_directions, dim=0).to(rank)
+        self.rank = get_rank()
+        self.rank = torch.device('cpu') #get_rank()
+        self.all_c2w = torch.cat(_all_c2w, dim=0).to(self.rank)
+        self.all_images = torch.cat(_all_images, dim=0).to(self.rank)
+        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(self.rank)
+        self.frame_ids = torch.cat(_frame_ids, dim=0).to(self.rank)
+        self.directions = torch.cat(_directions, dim=0).to(self.rank)
         self.image_pixels = self.h * self.w
         self.time_max = frame_ids.max() + 1
         # compute indices of foreground pixels for sampling
@@ -129,46 +132,105 @@ class DySDFDatasetBase():
     def frame_id_to_time(self, frame_id):
         return (frame_id / self.time_max) * 2.0 - 1.0 # range of (-1, 1)
 
+    def _sample_pixels(self):
+        assert self.split == 'train'
+        index, y, x = None, None, None
+        train_num_rays = self.sampling.train_num_rays
+        if self.sampling.strategy == 'balanced':
+            fg_rays = train_num_rays//2
+            bg_rays = int(train_num_rays - fg_rays)
+
+            _fg_inds = self.fg_inds[torch.randint(0, self.fg_inds.shape[0], size=(fg_rays,), device=self.device)] # B,3
+            _bg_inds = self.bg_inds[torch.randint(0, self.bg_inds.shape[0], size=(bg_rays,), device=self.device)] # B,3\
+            _inds = torch.cat((_fg_inds, _bg_inds), 0)
+            index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
+        elif self.sampling.strategy == 'time_balanced':
+            n_cameras = self.all_images.shape[0]
+            assert train_num_rays % n_cameras == 0, 'train_num_rays should be divisible by the number of cameras and frames'
+            bg_rays = train_num_rays//4
+            fg_rays = int(train_num_rays - bg_rays)
+
+            _yx_fg_inds = self.yx_fg_inds[torch.randint(0, self.yx_fg_inds.shape[0], size=(fg_rays,), device=self.device)] # B,3
+            _yx_bg_inds = self.yx_bg_inds[torch.randint(0, self.yx_bg_inds.shape[0], size=(bg_rays,), device=self.device)] # B,3\
+            _yx_inds = torch.cat((_yx_fg_inds, _yx_bg_inds), 0)
+
+            n_samples_per_time = train_num_rays//self.all_images.shape[0]
+            index = torch.arange(0, n_cameras, device=self.device).view(-1, 1).expand(-1, n_samples_per_time).reshape(-1)
+            y, x = _yx_inds[:, 0], _yx_inds[:, 1]
+        else:
+            index = torch.randint(0, len(self.all_images), size=(train_num_rays,), device=self.device)
+            x = torch.randint(0, self.w, size=(train_num_rays,), device=self.device)
+            y = torch.randint(0, self.h, size=(train_num_rays,), device=self.device)
+        return index, y, x
+
+    def sample_data(self, index=None):
+        if self.split == 'train':
+            index, y, x = self._sample_pixels()
+            directions = self.directions[index, y, x] # (B,3)
+            c2w = self.all_c2w[index]
+            rays_o, rays_d = get_rays(directions, c2w)
+            rgb = self.all_images[index, y, x].view(-1, self.all_images.shape[-1])
+            fg_mask = self.all_fg_masks[index, y, x].view(-1)
+        else:
+            c2w = self.all_c2w[index].squeeze(0)
+            directions = self.directions[index].squeeze(0) #(H,W,3)
+            rays_o, rays_d = get_rays(directions, c2w)
+            rgb = self.all_images[index].view(-1, self.all_images.shape[-1])
+            fg_mask = self.all_fg_masks[index].view(-1)
+        frame_id = self.frame_ids[index]
+        rays_time = self.frame_id_to_time(frame_id).view(-1, 1)
+        if rays_time.shape[0] != rays_o.shape[0]:
+            rays_time = rays_time.expand(rays_o.shape[0], rays_time.shape[1])
+        rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
+
+        return {
+            'rays': rays, # n_rays, 7
+            'frame_id': frame_id.squeeze(), # n_rays
+            'rgb': rgb, # n_rays, 3
+            'mask': fg_mask, # n_rays
+        }
+
 class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
-    def __init__(self, config, split):
-        self.setup(config, split)
+    def __init__(self, config, camera_list, split):
+        self.setup(config, camera_list, split)
 
     def __len__(self):
         return len(self.all_images)
     
     def __getitem__(self, index):
-        return {
-            'index': index
-        }
+        batch = self.sample_data(index)
+        batch.update(dict(index=index))
+        return batch
 
 
 class DySDFIterableDataset(torch.utils.data.IterableDataset, DySDFDatasetBase):
-    def __init__(self, config, split):
-        self.setup(config, split)
+    def __init__(self, config, camera_list, split):
+        self.setup(config, camera_list, split)
 
     def __iter__(self):
         while True:
-            yield {}
+            batch = self.sample_data(None)
+            yield batch
 
-class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
-    def __init__(self, config, split):
-        self.setup(config, split)
+# class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
+#     def __init__(self, config, split):
+#         self.setup(config, split)
 
-    def setup(self, config, split):
-        super().setup(config, split)
-        # create new cameras
-        cams = self.get_360cams(self.w, self.h)
+#     def setup(self, config, split):
+#         super().setup(config, split)
+#         # create new cameras
+#         cams = self.get_360cams(self.w, self.h)
 
-        # self.rank = _get_rank()
-        self.all_c2w = torch.stack([c['c2ws'] for c in cams]).float().to(self.rank)[:, :3, :4]
+#         # self.rank = _get_rank()
+#         self.all_c2w = torch.stack([c['c2ws'] for c in cams]).float().to(self.rank)[:, :3, :4]
 
-    def __len__(self):
-        return self.all_c2w.shape[0]
+#     def __len__(self):
+#         return self.all_c2w.shape[0]
     
-    def __getitem__(self, index):
-        return {
-            'index': index
-        }
+#     def __getitem__(self, index):
+#         return {
+#             'index': index
+#         }
 
 @datasets.register('dysdf_dataset')
 class DySDFDataModule(pl.LightningDataModule):
@@ -178,13 +240,13 @@ class DySDFDataModule(pl.LightningDataModule):
     
     def setup(self, stage=None):
         if stage in [None, 'fit']:
-            self.train_dataset = DySDFIterableDataset(self.config, self.config.train_split)
+            self.train_dataset = DySDFIterableDataset(self.config, self.config.train_split, 'train')
         if stage in [None, 'fit', 'validate']:
-            self.val_dataset = DySDFDataset(self.config, self.config.val_split)
+            self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test')
         if stage in [None, 'test']:
-            self.test_dataset = DySDFDataset(self.config, self.config.test_split)
-        if stage in [None, 'predict']:
-            self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split)
+            self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test')
+        # if stage in [None, 'predict']:
+        #     self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split)
 
     @staticmethod
     def get_metadata(config):
@@ -214,7 +276,7 @@ class DySDFDataModule(pl.LightningDataModule):
         sampler = None
         return torch.utils.data.DataLoader(
             dataset, 
-            num_workers=0,#os.cpu_count(), 
+            num_workers=8,#os.cpu_count(), 
             batch_size=batch_size,
             pin_memory=True,
             sampler=sampler

@@ -19,63 +19,10 @@ class DySDFSystem(BaseSystem):
     def forward(self, batch):
         return self.model(**batch) 
     
-    def _sample_pixels(self, stage, batch, device):
-        index, y, x = None, None, None
-        if stage in ['train']:
-            if self.sampling.strategy == 'balanced':
-                fg_rays = self.train_num_rays//2
-                bg_rays = int(self.train_num_rays - fg_rays)
-
-                _fg_inds = self.dataset.fg_inds[torch.randint(0, self.dataset.fg_inds.shape[0], size=(fg_rays,), device=device)] # B,3
-                _bg_inds = self.dataset.bg_inds[torch.randint(0, self.dataset.bg_inds.shape[0], size=(bg_rays,), device=device)] # B,3\
-                _inds = torch.cat((_fg_inds, _bg_inds), 0)
-                index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
-            elif self.sampling.strategy == 'time_balanced':
-                n_cameras = self.dataset.all_images.shape[0]
-                assert self.train_num_rays % n_cameras == 0, 'train_num_rays should be divisible by the number of cameras and frames'
-                bg_rays = self.train_num_rays//4
-                fg_rays = int(self.train_num_rays - bg_rays)
-
-                _yx_fg_inds = self.dataset.yx_fg_inds[torch.randint(0, self.dataset.yx_fg_inds.shape[0], size=(fg_rays,), device=device)] # B,3
-                _yx_bg_inds = self.dataset.yx_bg_inds[torch.randint(0, self.dataset.yx_bg_inds.shape[0], size=(bg_rays,), device=device)] # B,3\
-                _yx_inds = torch.cat((_yx_fg_inds, _yx_bg_inds), 0)
-
-                n_samples_per_time = self.train_num_rays//self.dataset.all_images.shape[0]
-                index = torch.arange(0, n_cameras, device=device).view(-1, 1).expand(-1, n_samples_per_time).reshape(-1)
-                y, x = _yx_inds[:, 0], _yx_inds[:, 1]
-            else:
-                index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=device)
-                x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,), device=device)
-                y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,), device=device)
-        else:
-            if 'index' in batch: # validation / testing
-                index = batch['index']
-            else:
-                index = torch.randint(0, len(self.dataset.all_images), size=(1,), device=device)
-        return index, y, x
-
     def preprocess_data(self, batch, stage):
-        device = self.dataset.all_images.device
-
-        index, y, x = self._sample_pixels(stage, batch, device)
-        if stage in ['train']:
-            directions = self.dataset.directions[index, y, x] # (B,3)
-            c2w = self.dataset.all_c2w[index]
-            rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
-        else:
-            c2w = self.dataset.all_c2w[index].squeeze(0)
-            directions = self.dataset.directions[index].squeeze(0) #(H,W,3)
-            rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index].view(-1)
-        frame_id = self.dataset.frame_ids[index]
-        rays_time = self.dataset.frame_id_to_time(frame_id).view(-1, 1)
-        if rays_time.shape[0] != rays_o.shape[0]:
-            rays_time = rays_time.expand(rays_o.shape[0], rays_time.shape[1])
-        rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
-
+        for key, val in batch.items():
+            if torch.is_tensor(val):
+                batch[key] = val.squeeze(0).to(self.device)
         if stage in ['train']:
             if self.config.model.background == 'white':
                 self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
@@ -87,15 +34,9 @@ class DySDFSystem(BaseSystem):
                 raise NotImplementedError
         else:
             self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
-        
-        rgb = rgb * fg_mask[..., None] + self.model.background_color * (1 - fg_mask[..., None])
+        if 'rgb' in batch:
+            batch['rgb'] = batch['rgb']*batch['mask'][..., None] + self.model.background_color * (1 - batch['mask'][..., None])
         setattr(self.model, 'alpha_ratio', self.alpha_ratio)
-        batch.update({
-            'rays': rays, # n_rays, 7
-            'frame_id': frame_id.squeeze(), # n_rays
-            'rgb': rgb, # n_rays, 3
-            'mask': fg_mask, # n_rays
-        })
 
     @property
     def alpha_ratio(self):
