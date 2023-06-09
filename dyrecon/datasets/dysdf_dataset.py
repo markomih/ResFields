@@ -112,13 +112,12 @@ class DySDFDatasetBase():
             _frame_ids.append(frame_ids)
             _directions.append(directions)
 
-        self.rank = get_rank()
-        self.rank = torch.device('cpu') #get_rank()
-        self.all_c2w = torch.cat(_all_c2w, dim=0).to(self.rank)
-        self.all_images = torch.cat(_all_images, dim=0).to(self.rank)
-        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(self.rank)
-        self.frame_ids = torch.cat(_frame_ids, dim=0).to(self.rank)
-        self.directions = torch.cat(_directions, dim=0).to(self.rank)
+        self.device = torch.device('cpu') #get_rank()
+        self.all_c2w = torch.cat(_all_c2w, dim=0).to(self.device)
+        self.all_images = torch.cat(_all_images, dim=0).to(self.device)
+        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(self.device)
+        self.frame_ids = torch.cat(_frame_ids, dim=0).to(self.device)
+        self.directions = torch.cat(_directions, dim=0).to(self.device)
         self.image_pixels = self.h * self.w
         self.time_max = frame_ids.max() + 1
         # compute indices of foreground pixels for sampling
@@ -221,8 +220,8 @@ class DySDFIterableDataset(torch.utils.data.IterableDataset, DySDFDatasetBase):
 #         # create new cameras
 #         cams = self.get_360cams(self.w, self.h)
 
-#         # self.rank = _get_rank()
-#         self.all_c2w = torch.stack([c['c2ws'] for c in cams]).float().to(self.rank)[:, :3, :4]
+#         # self.device = _get_rank()
+#         self.all_c2w = torch.stack([c['c2ws'] for c in cams]).float().to(self.device)[:, :3, :4]
 
 #     def __len__(self):
 #         return self.all_c2w.shape[0]
