@@ -2,13 +2,12 @@ import os
 import torch
 import torch.nn.functional as F
 import yaml
-from utils.ray_utils import get_rays
 import systems
 from typing import Dict, Any
 from collections import OrderedDict
 from systems.base import BaseSystem
 from models.utils import masked_mean
-from . import criterions
+from utils import criterions
 
 @systems.register('dysdf_system')
 class DySDFSystem(BaseSystem):
@@ -149,11 +148,8 @@ class DySDFSystem(BaseSystem):
         stats_dict['index'] = batch['index']
         return stats_dict
 
-    # def on_validation_epoch_end(self, out, prefix='val'):
-    def on_validation_epoch_end(self, prefix='val'):
-        # out = self.all_gather(out)
+    def _get_metrics_dict(self, out, prefix):
         if self.trainer.is_global_zero:
-            out = self.all_gather(self.validation_step_outputs if prefix == 'val' else self.test_step_outputs)
             metrics_dict = {}
             out_set = {}
             metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
@@ -172,20 +168,26 @@ class DySDFSystem(BaseSystem):
                 self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True, sync_dist=True)
             return metrics_dict
 
+    def on_validation_epoch_end(self, prefix='val'):
+        out = self.all_gather(self.validation_step_outputs)
+        if self.trainer.is_global_zero:
+            metrics_dict = self._get_metrics_dict(out, prefix)
+            return metrics_dict
+
     def test_step(self, batch, batch_idx):
         frame_id = batch['frame_id']
         file_name = f"{int(frame_id.item()):06d}"
         mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
         if not os.path.exists(mesh_path):
             time_step = self.dataset.frame_id_to_time(frame_id)
-            # NOTE two concurrent processes may write to the same file
             self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
         return self.validation_step(batch, batch_idx, prefix='test')
 
     # def on_test_epoch_end(self, out):
     def on_test_epoch_end(self, prefix='test'):
+        out = self.all_gather(self.test_step_outputs)
         if self.trainer.is_global_zero:
-            metrics_dict = self.on_validation_epoch_end(prefix=prefix)
+            metrics_dict = self._get_metrics_dict(out, prefix)
             res_path = self.get_save_path(f'results_it{self.global_step:06d}-{prefix}.yaml')
             with open(res_path, 'w') as file:
                 yaml.dump(metrics_dict, file)

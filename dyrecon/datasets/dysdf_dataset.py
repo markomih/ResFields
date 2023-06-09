@@ -261,13 +261,6 @@ class DySDFDataModule(pl.LightningDataModule):
             'scene_aabb': aabb,
             'n_frames': n_frames,
         }
-        # return {
-        #     'near': 0.1, 'far': 5.0,
-        #     'time_max': 100,
-        #     'train_img_hw': (512, 512),  # TODO: the resolution is temporary hardcoded
-        #     # 'bkgd_points': bkgd_points,
-        #     'scene_aabb': [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0],
-        # }
 
     def prepare_data(self):
         pass

@@ -8,7 +8,7 @@ import skvideo.io
 import systems
 from typing import Any
 from systems.base import BaseSystem
-from . import criterions
+from utils import criterions
 import torch.nn.functional as F
 
 @systems.register('video_system')
