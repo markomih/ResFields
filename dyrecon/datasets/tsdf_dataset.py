@@ -40,16 +40,14 @@ def anime_read(filename, normalize=True, ret_trimesh=False):
 
 
 class TSDFDatasetBase:
-    def setup(self, config):
+    def setup(self, config, load_time_steps=100000):
         path = config.path
-        self.num_samples = config.num_samples
-        total_samples = config.total_samples
-
         self.clip_sdf = config.get('clip_sdf', None)
         self.meshes = self.load_meshes(path)
+        self.meshes = self.meshes[:load_time_steps]
 
         self.n_frames = len(self.meshes)
-        self.per_mesh_samples = total_samples // self.n_frames
+        self.per_mesh_samples = config.num_samples // self.n_frames
         self.per_mesh_samples = self.per_mesh_samples - self.per_mesh_samples % 8
 
         print('Frames', self.n_frames)
@@ -97,34 +95,40 @@ class TSDFDatasetBase:
         sdfs = torch.from_numpy(sdfs)
         points = torch.from_numpy(points)
         
-        frame_ids = torch.arange(self.n_frames).view(-1, 1, 1).expand(-1, points.shape[1], -1)
-        time_steps = self.frame2time_step(frame_ids)
+        frame_id = torch.arange(self.n_frames)
+        time_steps = self.frame2time_step(frame_id.view(-1, 1, 1).expand(-1, points.shape[1], -1))
         coords = torch.cat((time_steps, points), dim=-1)
-        return  {'coords': coords.view(-1, coords.shape[-1]), 'frame_id': frame_ids.reshape(-1), 'sdf': sdfs.view(-1, sdfs.shape[-1]),}
+        to_ret = {
+            'coords': coords.float(), # T, S, 4
+            'frame_id': frame_id.long(), # T
+            'data': sdfs.float(), # T, S, 1
+        }
+        return  to_ret
 
 class TSDFDataset(torch.utils.data.Dataset, TSDFDatasetBase):
-    def __init__(self, config):
-        self.setup(config)
+    def __init__(self, config, load_time_steps=100000):
+        self.setup(config, load_time_steps)
 
     def __len__(self):
-        return len(self.all_images)
+        return self.n_frames
     
     def __getitem__(self, index):
         mesh = self.meshes[index]
         return dict(
             index=index,
+            frame_id=torch.arange(self.n_frames)[index].long(),
             gt_vertices=torch.from_numpy(mesh.vertices).float(),
             gt_faces=torch.from_numpy(mesh.faces).long(),
         )
 
 
 class TSDFIterableDataset(torch.utils.data.IterableDataset, TSDFDatasetBase):
-    def __init__(self, config):
-        self.setup(config)
+    def __init__(self, config, load_time_steps=100000):
+        self.setup(config, load_time_steps)
 
     def __iter__(self):
         while True:
-            batch = self.sample_data(None)
+            batch = self.sample_data()
             yield batch
 
 @datasets.register('tsdf_dataset')
@@ -135,21 +139,25 @@ class TSDFDataModule(pl.LightningDataModule):
     
     def setup(self, stage=None):
         if stage in [None, 'fit']:
-            self.train_dataset = TSDFIterableDataset(self.config)
+            load_time_steps = self.config.get('load_time_steps', 100000)
+            self.train_dataset = TSDFIterableDataset(self.config, load_time_steps)
         if stage in [None, 'fit', 'validate']:
-            self.val_dataset = TSDFDataset(self.config)
+            load_time_steps = self.config.get('val_load_time_steps', 100000)
+            self.val_dataset = TSDFDataset(self.config, load_time_steps)
         if stage in [None, 'test']:
-            self.test_dataset = TSDFDataset(self.config)
+            load_time_steps = self.config.get('test_load_time_steps', 100000)
+            self.test_dataset = TSDFDataset(self.config, load_time_steps)
         # if stage in [None, 'predict']:
         #     self.predict_dataset = TSDFPredictDataset(self.config, self.config.train_split)
 
     @staticmethod
     def get_metadata(config):
         aabb = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
+        load_time_steps = config.get('load_time_steps', 100000)
         n_frames = len(TSDFDatasetBase.load_meshes(config.path))
         return {
             'scene_aabb': aabb,
-            'n_frames': n_frames,
+            'n_frames': min(n_frames, load_time_steps),
         }
 
     def prepare_data(self):

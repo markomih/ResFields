@@ -1,18 +1,20 @@
 trial_name: base
 tag: ''
-name: video/${dataset.scene}/${trial_name}${tag}
+name: tsdf/${dataset.scene}/${trial_name}${tag}
 seed: 42
 
 dataset:
-  name: video_dataset
-  scene: ${basename:${dataset.video_path}}
-  video_path: skvideo.datasets.bikes # or ../datasets/video_data/${dataset.scene}
-  test_every: 10  # every 10th pixel used for testing and removed from training
+  val_load_time_steps: 1
+  name: tsdf_dataset
+  scene: ${basename:${dataset.path}}
+  test_every: 10
+  path: ../datasets/DeformingThings4D/bear3EP_Agression.anime
+  num_samples: 200000
 
 model:
   name: siren_mlp
-  in_features: 3
-  out_features: 3
+  in_features: 4
+  out_features: 1
   hidden_features: 256
   num_hidden_layers: 4
 
@@ -20,12 +22,10 @@ model:
   independent_layers: []
   capacity: n_frames
   mode: lookup
-
-  sampling:
-    n_samples: 200000
-
+  isosurface:
+    resolution: 512
 system:
-  name: video_system
+  name: tsdf_system
   optimizer:
     name: Adam
     args:
@@ -41,10 +41,8 @@ checkpoint:
   every_n_train_steps: 20000
   save_last: True
 trainer:
-  max_steps: 100000
+  max_steps: 200000
   log_every_n_steps: 100
   num_sanity_val_steps: 0
-  val_check_interval: 2500 #10000
-  # limit_train_batches: 1.0
-  # limit_val_batches: 2 #0.06
+  val_check_interval: 10000
   enable_progress_bar: true

@@ -73,7 +73,7 @@ def main():
     if args.model_ckpt is not None:  # overwrite last ckpt if specified model path
         last_ckpt = args.model_ckpt
     resume_from_checkpoint = config.get('resume_from_checkpoint', last_ckpt)
-    system = systems.make(config.system.name, config, None)
+    system = systems.make(config.system.name, config, resume_from_checkpoint)
 
     loggers = []
     if args.train:
@@ -116,7 +116,7 @@ def main():
 
     # clean up in the case there are deamon processes left
     trainer.strategy.barrier()
-    trainer.accelerator.teardown()
+    # trainer.accelerator.teardown()
     if len(gpu_list) == 1:
         for _gpu in gpu_list:
             print(f'MAX MEMORY ALLOCATED (GPU#{_gpu})\t', int(torch.cuda.max_memory_allocated(int(_gpu))/(2**20)), 'MB')

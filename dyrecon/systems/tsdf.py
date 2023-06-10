@@ -1,14 +1,11 @@
-import os
 import torch
 import numpy as np
-import cv2
 import torch.nn.functional as F
 import yaml
-import skvideo.io
 import systems
-from typing import Any, Optional
 from systems.base import BaseSystem
 import torch.nn.functional as F
+from models.utils import extract_geometry
 
 try:
     from pytorch3d.structures.meshes import Meshes
@@ -23,59 +20,81 @@ except Exception:
     print('Warning: pytorch3d not installed.', 'Needed for Chamfer loss and mesh sampling.')
 
 @systems.register('tsdf_system')
-class DySDFSystem(BaseSystem):
+class TSDFSystem(BaseSystem):
     def prepare(self):
-        self.sampling = self.config.model.sampling
-        self.train_num_rays = self.sampling.train_num_rays
+        self.n_frames = self.config.model.metadata.n_frames
+        if self.config.model.capacity == 'n_frames':
+            self.config.model.capacity = self.n_frames
+
         rnd_res = self.config.model.metadata.get('rnd_resolution', 512)
         self.mesh_renderer = MeshRenderer(rnd_res)
 
-    def forward(self, batch):
-        return self.model(**batch) 
-    
+    def frame2time_step(self, frame_id):
+        time_step = 2*(frame_id / (self.n_frames-1) - 0.5) #[-1.0,1.0]
+        return time_step
+
     def preprocess_data(self, batch, stage):
         for key, val in batch.items():
             if torch.is_tensor(val):
                 batch[key] = val.squeeze(0).to(self.device)
 
-    def forward(self, coords, frame_ids):
+    def forward(self, coords, frame_id):
         # coords: (T, S, 3)
-        # frame_ids: (T)
+        # frame_id: (T)
         # return: (T, S, 3))
-        # split_size = batch_size // coords.shape[1]
-        if not self.model.training: # batchify coords to prevent OOM at inference time
-            pred = torch.cat([self.model(_c, _f) for _c, _f in zip(coords.split(1), frame_ids.split(1))], dim=0)
-        else:
-            pred = self.model(coords, frame_ids)
-        # pred = torch.cat([self.model(_c, frame_ids) for _c in coords.split(split_size, dim=1)], dim=1)
+        pred = self.model(coords, frame_id)
         return pred
 
     def training_step(self, batch, batch_idx):
-        pred = self(batch['coords'], batch['frame_ids'])
+        pred = self(batch['coords'], batch['frame_id'])
         loss = 1000.*F.mse_loss(pred, batch['data'])
         self.log('train/loss', loss, prog_bar=True, rank_zero_only=True, sync_dist=True)
         return dict(loss=loss)
+
+    def _extract_mesh(self, mesh_path, frame_id, resolution):
+        # extract mesh from TSDF
+        mesh = self.model.extract_mesh(frame_id, resolution)
+        # save mesh
+        mesh.export(mesh_path)
+        return mesh
+
+    def _isosurface(self, mesh_path, frame_id, resolution):
+        time_step = self.frame2time_step(frame_id)
+        assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
+
+        def _query_sdf(pts): # pts: Tensor with shape (n_pts, 3). Dtype=float32.
+            pts = pts.view(1, -1, 3).to(frame_id.device)
+            pts_time = torch.full_like(pts[..., :1], time_step)
+            coords = torch.cat((pts_time, pts), dim=-1)
+            sdf = self.model(coords, frame_id=frame_id)
+            return -sdf.view(-1)
+        
+        bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
+        bound_max = torch.tensor([ 1.0,  1.0,  1.0], dtype=torch.float32)
+        mesh = extract_geometry(bound_min, bound_max, resolution=resolution, threshold=0, query_func=_query_sdf)
+        mesh.export(mesh_path)
+        return mesh
 
     def validation_step(self, batch, batch_idx, prefix='val'):
         frame_id = batch['frame_id']
         file_name = f"{int(frame_id.item()):06d}"
         mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
         # extract and evaluate mesh
-        pred_mesh = self.model.isosurface(mesh_path, frame_id, self.config.model.isosurface.resolution)
+        pred_mesh = self._isosurface(mesh_path, frame_id, self.config.model.isosurface.resolution)
 
         torch_pred_mesh = Meshes(
-            torch.from_numpy(pred_mesh.vertices).float()[None],
-            torch.from_numpy(pred_mesh.faces).long()[None],
+            torch.from_numpy(pred_mesh.vertices).float()[None].to(self.device),
+            torch.from_numpy(pred_mesh.faces).long()[None].to(self.device),
         )
         torch_gt_mesh = Meshes(batch['gt_vertices'][None], batch['gt_faces'][None])
 
         CD, ND = self.mesh_renderer.eval_mesh(torch_pred_mesh, torch_gt_mesh)
 
-        metrics_dict = dict(CD=CD, ND=ND)
+        metrics_dict = dict(metric_CD=CD, metric_ND=ND)
 
         # render mesh for visualization
-        rnd_gt = self.mesh_renderer.render_mesh(torch_gt_mesh, mode='n')[..., :3]
-        rnd_pred = self.mesh_renderer.render_mesh(torch_pred_mesh, mode='n')[..., :3]
+        rnd_gt = self.mesh_renderer.render_mesh(torch_gt_mesh, mode='n').squeeze(0)[..., :3]
+        rnd_pred = self.mesh_renderer.render_mesh(torch_pred_mesh, mode='n').squeeze(0)[..., :3]
         _log_imgs = [
             {'type': 'rgb', 'img': rnd_gt, 'kwargs': {'data_format': 'HWC'}},
             {'type': 'rgb', 'img': rnd_pred, 'kwargs': {'data_format': 'HWC'}},
@@ -93,10 +112,31 @@ class DySDFSystem(BaseSystem):
                 else:
                     self.logger.experiment.add_image(f'{prefix}/renderings', img/255., self.global_step, dataformats='HWC')
 
+        metrics_dict['index'] = batch['index']
         return metrics_dict
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx, prefix='test')
+
+    def _get_metrics_dict(self, out, prefix):
+        if self.trainer.is_global_zero and out != []:
+            metrics_dict = {}
+            out_set = {}
+            metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
+            for step_out in out:
+                # DP
+                if step_out['index'].ndim == 1:
+                    out_set[step_out['index'].item()] = {k: step_out[k] for k in metrics}
+                # DDP
+                else:
+                    for oi, index in enumerate(step_out['index']):
+                        out_set[index[0].item()] = {k: step_out[k][oi] for k in metrics}
+
+            for key in metrics:
+                m_val = torch.mean(torch.stack([o[key] for o in out_set.values()]))
+                metrics_dict[key] = float(m_val.detach().cpu())
+                self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True, sync_dist=True)
+            return metrics_dict
 
     def on_validation_epoch_end(self, prefix='val'):
         out = self.all_gather(self.validation_step_outputs)
@@ -113,7 +153,7 @@ class DySDFSystem(BaseSystem):
                 yaml.dump(metrics_dict, file)
 
             idir = f"it{self.global_step:06d}-{prefix}"
-            self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=30)
+            self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=20)
 
 class MeshRenderer:
     """ Adapted from COAP [CVPR 2022]"""
@@ -150,7 +190,6 @@ class MeshRenderer:
         normals = torch.stack(mesh.verts_normals_list())
         front_light = torch.tensor([0, 0, -1]).float().to(verts.device)
         shades = (normals * front_light.view(1, 1, 3)).sum(-1).clamp(min=0).unsqueeze(-1).expand(-1, -1, 3)
-        results = []
 
         self.renderer.to(verts.device)
         # normal

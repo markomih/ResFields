@@ -13,4 +13,4 @@ def make(name, config):
     return dataset
 
 
-from . import dysdf_dataset, video_dataset
+from . import dysdf_dataset, video_dataset, tsdf_dataset

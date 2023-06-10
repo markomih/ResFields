@@ -149,7 +149,7 @@ class DySDFSystem(BaseSystem):
         return stats_dict
 
     def _get_metrics_dict(self, out, prefix):
-        if self.trainer.is_global_zero:
+        if self.trainer.is_global_zero and out != []:
             metrics_dict = {}
             out_set = {}
             metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]

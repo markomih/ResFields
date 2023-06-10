@@ -64,12 +64,11 @@ def parse_cam(scale_mats_np, world_mats_np):
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
 
 class DySDFDatasetBase():
-    def setup(self, config, camera_list, split):
+    def setup(self, config, camera_list, split, load_time_steps=100000):
         # self.config = config
         print('Load data: Begin')
         self.split = split
         self.sampling = config.get('sampling', None)
-        load_time_steps = config.get('load_time_steps', 100000)
         # data_ids = config.get(f'{split}_ids', -1)
         def _sample(data_list: list):
             ret = data_list #if data_ids == -1 else [data_list[i] for i in data_ids]
@@ -190,8 +189,8 @@ class DySDFDatasetBase():
         }
 
 class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
-    def __init__(self, config, camera_list, split):
-        self.setup(config, camera_list, split)
+    def __init__(self, config, camera_list, split, load_time_steps=100000):
+        self.setup(config, camera_list, split, load_time_steps)
 
     def __len__(self):
         return len(self.all_images)
@@ -203,8 +202,8 @@ class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
 
 
 class DySDFIterableDataset(torch.utils.data.IterableDataset, DySDFDatasetBase):
-    def __init__(self, config, camera_list, split):
-        self.setup(config, camera_list, split)
+    def __init__(self, config, camera_list, split, load_time_steps=100000):
+        self.setup(config, camera_list, split, load_time_steps)
 
     def __iter__(self):
         while True:
@@ -239,11 +238,14 @@ class DySDFDataModule(pl.LightningDataModule):
     
     def setup(self, stage=None):
         if stage in [None, 'fit']:
-            self.train_dataset = DySDFIterableDataset(self.config, self.config.train_split, 'train')
+            load_time_steps =self.config.get('load_time_steps', 100000)
+            self.train_dataset = DySDFIterableDataset(self.config, self.config.train_split, 'train', load_time_steps)
         if stage in [None, 'fit', 'validate']:
-            self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test')
+            load_time_steps = self.config.get('val_load_time_steps', 100000)
+            self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test', load_time_steps)
         if stage in [None, 'test']:
-            self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test')
+            load_time_steps = self.config.get('test_load_time_steps', 100000)
+            self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test', load_time_steps)
         # if stage in [None, 'predict']:
         #     self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split)
 
@@ -268,7 +270,7 @@ class DySDFDataModule(pl.LightningDataModule):
         sampler = None
         return torch.utils.data.DataLoader(
             dataset, 
-            num_workers=8,#os.cpu_count(), 
+            num_workers=0,#os.cpu_count(), 
             batch_size=batch_size,
             pin_memory=True,
             sampler=sampler

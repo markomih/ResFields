@@ -17,5 +17,4 @@ def make(name, config, load_from_checkpoint=None):
     return system
 
 
-# from . import dysurf, dnerf, tnerf, instant_tnerf, kplanes
-from . import dysdf, video #tnerf
+from . import dysdf, video, tsdf
