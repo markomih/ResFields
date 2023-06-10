@@ -1,0 +1,10 @@
+pytorch-lightning==1.6.5
+omegaconf
+matplotlib
+opencv-python
+imageio
+imageio-ffmpeg
+scipy
+PyMCubes
+tensorboard
+pysdf
