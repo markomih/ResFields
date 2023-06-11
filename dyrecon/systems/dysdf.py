@@ -219,4 +219,4 @@ class DySDFSystem(BaseSystem):
 
             for _level in self.levels:
                 idir = f"it{self.global_step:06d}-{prefix}_{_level}"
-                self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=30)
+                self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=15)
