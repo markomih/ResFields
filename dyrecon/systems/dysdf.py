@@ -65,7 +65,8 @@ class DySDFSystem(BaseSystem):
             loss += loss_weight.rgb*stats['loss_rgb']
 
         if 'mask' in batch and loss_weight.get('mask', 0.0) > 0.0:
-            stats['loss_mask'] = F.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze())
+            # stats['loss_mask'] = F.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze())
+            stats['loss_mask'] = F.l1_loss(out["opacity"].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze()) #F.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze())
             loss += loss_weight.mask*stats['loss_mask']
 
         if 'gradient_error' in out and loss_weight.get('eikonal', 0.0) > 0.0:
@@ -79,7 +80,7 @@ class DySDFSystem(BaseSystem):
                 metric_mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], batch['mask'].view(-1, 1)),
                 metric_psnr = criterions.compute_psnr(out['rgb'], batch['rgb']),
                 metric_ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
-                metric_mask_bce = F.binary_cross_entropy((batch['mask'].squeeze()).float(), out['opacity'].squeeze()),
+                metric_mask = F.l1_loss((batch['mask'].squeeze()).float(), out['opacity'].squeeze()),
             ))
 
         return loss, stats
