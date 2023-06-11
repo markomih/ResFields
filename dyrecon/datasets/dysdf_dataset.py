@@ -80,7 +80,7 @@ class DySDFDatasetBase():
             data_dir = os.path.join(config.data_root, cam_dir)
             if not os.path.exists(data_dir):
                 raise FileNotFoundError(data_dir)
-
+            print('Load data:', data_dir)
             _images_lis = sorted(glob(os.path.join(data_dir, 'rgb/*.png')))  
             _camera_dict = np.load(os.path.join(data_dir, 'cameras_sphere.npz'))
             world_mats_np = _sample([_camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))]) # world_mat is a projection matrix from world to image
@@ -247,15 +247,13 @@ class DySDFDataModule(pl.LightningDataModule):
         self.config = config
     
     def setup(self, stage=None):
+        load_time_steps =self.config.get('load_time_steps', 100000)
         if stage in [None, 'fit']:
-            load_time_steps =self.config.get('load_time_steps', 100000)
             self.train_dataset = DySDFIterableDataset(self.config, self.config.train_split, 'train', load_time_steps)
         if stage in [None, 'fit', 'validate']:
-            load_time_steps = self.config.get('val_load_time_steps', 100000)
-            self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test', load_time_steps)
+            self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test', self.config.get('val_load_time_steps', load_time_steps))
         if stage in [None, 'test']:
-            load_time_steps = self.config.get('test_load_time_steps', 100000)
-            self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test', load_time_steps)
+            self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test', self.config.get('test_load_time_steps', load_time_steps))
         # if stage in [None, 'predict']:
         #     self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split)
 
