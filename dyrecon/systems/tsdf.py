@@ -118,26 +118,6 @@ class TSDFSystem(BaseSystem):
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx, prefix='test')
 
-    def _get_metrics_dict(self, out, prefix):
-        if self.trainer.is_global_zero and out != []:
-            metrics_dict = {}
-            out_set = {}
-            metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
-            for step_out in out:
-                # DP
-                if step_out['index'].ndim == 1:
-                    out_set[step_out['index'].item()] = {k: step_out[k] for k in metrics}
-                # DDP
-                else:
-                    for oi, index in enumerate(step_out['index']):
-                        out_set[index[0].item()] = {k: step_out[k][oi] for k in metrics}
-
-            for key in metrics:
-                m_val = torch.mean(torch.stack([o[key] for o in out_set.values()]))
-                metrics_dict[key] = float(m_val.detach().cpu())
-                self.log(f'{prefix}/{key}', m_val, prog_bar=True, rank_zero_only=True, sync_dist=True)
-            return metrics_dict
-
     def on_validation_epoch_end(self, prefix='val'):
         out = self.all_gather(self.validation_step_outputs)
         if self.trainer.is_global_zero:

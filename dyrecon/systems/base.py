@@ -49,6 +49,16 @@ class BaseSystem(pl.LightningModule, SaverMixin):
     def preprocess_data(self, batch, stage):
         pass
 
+    def _get_metrics_dict(self, out, prefix):
+        if self.trainer.is_global_zero and out != []:
+            metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
+            metrics_dict = {}
+            for key in metrics:
+                metrics_dict[key] = float(torch.cat([step_out[key] for step_out in out]).mean().detach().cpu().item())
+                self.log(f'{prefix}/{key}', metrics_dict[key], prog_bar=True, rank_zero_only=True, sync_dist=True)
+                
+            return metrics_dict
+
     """
     Implementing on_after_batch_transfer of DataModule does the same.
     But on_after_batch_transfer does not support DP.
