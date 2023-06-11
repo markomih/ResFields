@@ -7,6 +7,8 @@ set -e
 set -o pipefail
 
 export PYTHONUNBUFFERED="True"
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+export PL_TORCH_DISTRIBUTED_BACKEND=gloo
 EXPERIMENT=$1
 CMD=$2
 TIME=$(date +"%Y-%m-%d_%H-%M-%S")
