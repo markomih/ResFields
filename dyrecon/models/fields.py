@@ -452,3 +452,48 @@ class Sine(nn.Module):
     def forward(self, input):
         # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
         return torch.sin(30 * input)
+
+@models.register('ngp_mlp')
+class NGPMLP(BaseModel):
+    def setup(self):
+        in_features = self.config.in_features
+        out_features = self.config.out_features
+        hidden_features = self.config.get('hidden_features', 64)
+        log2_hashmap_size = self.config.get('log2_hashmap_size', 20)
+        num_hidden_layers = self.config.get('num_hidden_layers', 2)
+        n_levels = self.config.get('n_levels', 16)
+
+        config = {
+            'encoding': {
+                'otype': 'HashGrid', 
+                'n_levels': n_levels, 
+                'n_features_per_level': 2, 
+                'log2_hashmap_size': log2_hashmap_size, # 2**14 - 2**24
+                'base_resolution': 16, 
+                'per_level_scale': 1.5
+                }, 
+            'network': {
+                'otype': 'FullyFusedMLP', 
+                'activation': 'ReLU', 
+                'output_activation': 'None', 
+                'n_neurons': hidden_features, 
+                'n_hidden_layers': num_hidden_layers
+            }
+        }
+        import tinycudann as tcnn
+        self.net = tcnn.NetworkWithInputEncoding(
+            n_input_dims=in_features,
+            n_output_dims=out_features,
+            encoding_config=config['encoding'],
+            network_config=config['network']
+        )
+
+    def forward(self, coords, frame_id=None):
+        # coords: (n_points, dim) # range (-1, 1)
+        coords = coords * 0.5 + 0.5  # rescale to (0, 1)
+        if len(coords.shape) == 3:
+            B, T, d = coords.shape
+        output = self.net(coords.view(-1, coords.shape[-1]))
+        if len(coords.shape) == 3:
+            output = output.view(B, T, output.shape[-1])
+        return output

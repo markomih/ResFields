@@ -169,7 +169,7 @@ class DySDF(BaseModel):
 
             pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
             hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
-                
+
             sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=rays_time.squeeze(-1), frame_id=frame_id.squeeze(-1))
             sdf, feature_vector = sdf_nn_output[..., :1], sdf_nn_output[..., 1:] # (n_rays, n_samples, 1), (n_rays, n_samples, F)
 

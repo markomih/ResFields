@@ -9,6 +9,16 @@ from systems.base import BaseSystem
 from models.utils import masked_mean
 from utils import criterions
 
+try:
+    from pytorch3d.structures.meshes import Meshes
+    from pytorch3d.structures import Pointclouds
+    from pytorch3d.loss.chamfer import chamfer_distance
+    from pytorch3d.ops import sample_points_from_meshes
+    PYTORCH3D_AVAILABLE = True
+except ImportError:
+    print('Warning: Pytorch3d not found. Skipping geometry evaluation.')
+    PYTORCH3D_AVAILABLE = False
+
 @systems.register('dysdf_system')
 class DySDFSystem(BaseSystem):
     def prepare(self):
@@ -178,10 +188,25 @@ class DySDFSystem(BaseSystem):
         frame_id = batch['frame_id']
         file_name = f"{int(frame_id.item()):06d}"
         mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
-        if not os.path.exists(mesh_path):
-            time_step = self.dataset.frame_id_to_time(frame_id)
-            self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
-        return self.validation_step(batch, batch_idx, prefix='test')
+        time_step = self.dataset.frame_id_to_time(frame_id)
+        pred_mesh = self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
+        ch_dist = torch.tensor(0.)
+        if len(pred_mesh.vertices) == 0:
+            print('Warning: empty mesh')
+        if 'cloud' in batch and len(pred_mesh.vertices) > 0 and PYTORCH3D_AVAILABLE: # evaluate Champfer distance
+            num_samples = 100000
+            torch_pred_mesh = Meshes(
+                torch.from_numpy(pred_mesh.vertices).float()[None].to(self.device),
+                torch.from_numpy(pred_mesh.faces).long()[None].to(self.device),
+            )
+            pred_pts = sample_points_from_meshes(torch_pred_mesh, num_samples)  # B, N, 3
+            gt_cloud = Pointclouds(batch['cloud'][None]).subsample(num_samples)
+            gt_pts = gt_cloud.points_padded() # B, N, 3
+            ch_dist = chamfer_distance(x=pred_pts, y=gt_pts, batch_reduction = "mean", point_reduction = "mean", norm=1,)[0]
+
+        stats_dict = self.validation_step(batch, batch_idx, prefix='test')
+        stats_dict['metric_CD'] = ch_dist
+        return stats_dict
 
     # def on_test_epoch_end(self, out):
     def on_test_epoch_end(self, prefix='test'):

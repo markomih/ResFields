@@ -3,6 +3,7 @@ import os
 from glob import glob
 
 import torch
+import trimesh
 import cv2 as cv
 import numpy as np
 import pytorch_lightning as pl
@@ -111,6 +112,13 @@ class DySDFDatasetBase():
             _frame_ids.append(frame_ids)
             _directions.append(directions)
 
+        if self.split != 'train' and os.path.exists(os.path.join(config.data_root, 'cloud')):
+            coud_dir = os.path.join(config.data_root, 'cloud')
+            _mesh_lis = _sample(sorted(glob(os.path.join(coud_dir, '*.ply'))))
+            self.clouds = [torch.from_numpy(trimesh.load(mesh_file).vertices).float() for mesh_file in _mesh_lis]
+        else:
+            self.clouds = None
+
         self.device = torch.device('cpu') #get_rank()
         self.all_c2w = torch.cat(_all_c2w, dim=0).to(self.device)
         self.all_images = torch.cat(_all_images, dim=0).to(self.device)
@@ -198,6 +206,8 @@ class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
     def __getitem__(self, index):
         batch = self.sample_data(index)
         batch.update(dict(index=index))
+        if self.clouds is not None:
+            batch['cloud'] = self.clouds[index]
         return batch
 
 

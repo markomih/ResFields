@@ -1,0 +1,12 @@
+trial_name: ngp
+defaults:
+  - base.yaml
+model:
+  name: ngp_mlp
+  in_features: 3
+  out_features: 3
+  hidden_features: 64
+  num_hidden_layers: 2
+
+trainer:
+  precision: 16
