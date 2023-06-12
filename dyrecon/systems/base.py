@@ -20,7 +20,7 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         self.rank = get_rank()
         self.prepare()
         self.model = models.make(self.config.model.name, self.config.model)
-    
+
     def prepare(self):
         pass
 
