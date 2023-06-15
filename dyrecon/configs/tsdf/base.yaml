@@ -8,7 +8,7 @@ dataset:
   name: tsdf_dataset
   scene: ${basename:${dataset.path}}
   path: ../datasets/DeformingThings4D/bear3EP_Agression.anime
-  num_samples: 500000
+  num_samples: 200000
 
 model:
   name: siren_mlp
@@ -28,7 +28,7 @@ system:
   optimizer:
     name: Adam
     args:
-      lr: 0.0005 #5e-4 0.0001
+      lr: 0.00005 #5e-4 0.0001
   scheduler:
     name: CosineAnnealingLR
     args:

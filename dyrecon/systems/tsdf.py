@@ -30,7 +30,7 @@ class TSDFSystem(BaseSystem):
         self.mesh_renderer = MeshRenderer(rnd_res)
 
     def frame2time_step(self, frame_id):
-        time_step = 2*(frame_id / (self.n_frames-1) - 0.5) #[-1.0,1.0]
+        time_step = 2*(frame_id / (self.n_frames+1) - 0.5) #[-1.0,1.0]
         return time_step
 
     def preprocess_data(self, batch, stage):
@@ -39,7 +39,7 @@ class TSDFSystem(BaseSystem):
                 batch[key] = val.squeeze(0).to(self.device)
 
     def forward(self, coords, frame_id):
-        # coords: (T, S, 3)
+        # coords: (T, S, 4) txyz
         # frame_id: (T)
         # return: (T, S, 3))
         pred = self.model(coords, frame_id)
@@ -50,13 +50,6 @@ class TSDFSystem(BaseSystem):
         loss = 1000.*F.mse_loss(pred, batch['data'])
         self.log('train/loss', loss, prog_bar=True, rank_zero_only=True, sync_dist=True)
         return dict(loss=loss)
-
-    def _extract_mesh(self, mesh_path, frame_id, resolution):
-        # extract mesh from TSDF
-        mesh = self.model.extract_mesh(frame_id, resolution)
-        # save mesh
-        mesh.export(mesh_path)
-        return mesh
 
     def _isosurface(self, mesh_path, frame_id, resolution):
         time_step = self.frame2time_step(frame_id)
@@ -86,7 +79,7 @@ class TSDFSystem(BaseSystem):
             torch.from_numpy(pred_mesh.vertices).float()[None].to(self.device),
             torch.from_numpy(pred_mesh.faces).long()[None].to(self.device),
         )
-        torch_gt_mesh = Meshes(batch['gt_vertices'][None], batch['gt_faces'][None])
+        torch_gt_mesh = Meshes(batch['gt_vertices'][None].float(), batch['gt_faces'][None].float())
 
         CD, ND = self.mesh_renderer.eval_mesh(torch_pred_mesh, torch_gt_mesh)
 
@@ -172,36 +165,37 @@ class MeshRenderer:
         shades = (normals * front_light.view(1, 1, 3)).sum(-1).clamp(min=0).unsqueeze(-1).expand(-1, -1, 3)
 
         self.renderer.to(verts.device)
-        # normal
-        if 'n' in mode:
-            if flip_normal:
-                normals = -normals
-            normals_vis = normals * 0.5 + 0.5
-            mesh_normal = Meshes(verts, faces, textures=Textures(verts_rgb=normals_vis))
-            image_normal = self.renderer(mesh_normal)
-            return image_normal
+        with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=False):
+            # normal
+            if 'n' in mode:
+                if flip_normal:
+                    normals = -normals
+                normals_vis = normals * 0.5 + 0.5
+                mesh_normal = Meshes(verts, faces, textures=Textures(verts_rgb=normals_vis))
+                image_normal = self.renderer(mesh_normal)
+                return image_normal
 
-        # shading
-        if 'p' in mode:
-            mesh_shading = Meshes(verts, faces, textures=Textures(verts_rgb=shades))
-            image_phong = self.renderer(mesh_shading)
-            return image_phong
+            # shading
+            if 'p' in mode:
+                mesh_shading = Meshes(verts, faces, textures=Textures(verts_rgb=shades))
+                image_phong = self.renderer(mesh_shading)
+                return image_phong
 
-        # albedo
-        if 'a' in mode:
-            assert (colors is not None)
-            mesh_albido = Meshes(verts, faces, textures=Textures(verts_rgb=colors))
-            image_color = self.renderer(mesh_albido)
-            return image_color
+            # albedo
+            if 'a' in mode:
+                assert (colors is not None)
+                mesh_albido = Meshes(verts, faces, textures=Textures(verts_rgb=colors))
+                image_color = self.renderer(mesh_albido)
+                return image_color
 
-        # albedo*shading
-        if 't' in mode:
-            assert (colors is not None)
-            mesh_teture = Meshes(verts, faces, textures=Textures(verts_rgb=colors * shades))
-            image_color = self.renderer(mesh_teture)
-            return image_color
+            # albedo*shading
+            if 't' in mode:
+                assert (colors is not None)
+                mesh_teture = Meshes(verts, faces, textures=Textures(verts_rgb=colors * shades))
+                image_color = self.renderer(mesh_teture)
+                return image_color
 
-        raise NotImplementedError
+            raise NotImplementedError
     
     @torch.no_grad()
     def eval_mesh(self, pred_mesh:Meshes, gt_mesh: Meshes, num_samples:int = 100000): # pytorch3d meshes

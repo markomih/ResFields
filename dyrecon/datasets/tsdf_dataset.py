@@ -61,7 +61,7 @@ class TSDFDatasetBase:
             raise NotImplementedError
 
     def frame2time_step(self, frame_id):
-        time_step = 2*(frame_id / (self.n_frames-1) - 0.5) #[-1.0,1.0]
+        time_step = 2*(frame_id / (self.n_frames+1) - 0.5) #[-1.0,1.0]
         return time_step
 
     def time_step2frame(self, time_step):
@@ -138,15 +138,13 @@ class TSDFDataModule(pl.LightningDataModule):
         self.config = config
     
     def setup(self, stage=None):
+        load_time_steps = self.config.get('load_time_steps', 100000)
         if stage in [None, 'fit']:
-            load_time_steps = self.config.get('load_time_steps', 100000)
             self.train_dataset = TSDFIterableDataset(self.config, load_time_steps)
         if stage in [None, 'fit', 'validate']:
-            load_time_steps = self.config.get('val_load_time_steps', 100000)
-            self.val_dataset = TSDFDataset(self.config, load_time_steps)
+            self.val_dataset = TSDFDataset(self.config, self.config.get('val_load_time_steps', load_time_steps))
         if stage in [None, 'test']:
-            load_time_steps = self.config.get('test_load_time_steps', 100000)
-            self.test_dataset = TSDFDataset(self.config, load_time_steps)
+            self.test_dataset = TSDFDataset(self.config, self.config.get('test_load_time_steps', load_time_steps))
         # if stage in [None, 'predict']:
         #     self.predict_dataset = TSDFPredictDataset(self.config, self.config.train_split)
 
