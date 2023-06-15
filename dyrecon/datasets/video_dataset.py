@@ -12,20 +12,20 @@ def load_video(path_to_video):
     if 'npy' in path_to_video:
         vid = np.load(path_to_video)
     elif 'mp4' in path_to_video:
-        vid = skvideo.io.vread(path_to_video).astype(np.single) / 255.
+        vid = skvideo.io.vread(path_to_video).astype(np.float64) / 255.
     return vid # T,H,W,C
 
 class VideoDatasetBase:
 
     def setup(self, config, split):
         assert split in ['train', 'test', 'predict']
-
+        self.split = split
         vid = load_video(config.video_path)
         test_every = config.test_every
 
         sidelength = vid.shape[:-1] # T x H x W
         all_mgrid = self._get_mgrid(sidelength, dim=3).view(*sidelength, 3) # TxHxW x 3
-        all_data = torch.from_numpy(vid) # TxHxW x 3
+        all_data = torch.from_numpy(vid).float() # TxHxW x 3
 
         val_ids = np.arange(0, all_mgrid.shape[2], test_every)
         train_ids = np.delete(np.arange(0, all_mgrid.shape[2]), val_ids)
@@ -34,21 +34,20 @@ class VideoDatasetBase:
         val_coords, val_data = all_mgrid[:, :, val_ids], all_data[:, :, val_ids]
         all_coords, all_data = all_mgrid, all_data
 
-        rank = get_rank()
-
         # set parameters
-        self.train_data = train_data.to(rank)
-        self.train_coords = train_coords.to(rank)
-
+        self.train_data = train_data.float()
+        self.train_coords = train_coords.float()
         if split == 'train':
-            self.data = train_data.to(rank)
-            self.coords = train_coords.to(rank)
+            self.sampling = config.sampling
+            self.n_samples = self.sampling.n_samples // all_coords.shape[0]
+            self.data = self.train_data
+            self.coords = self.train_coords
         elif split == 'test':
-            self.data = val_data.to(rank)
-            self.coords = val_coords.to(rank)
+            self.data = val_data
+            self.coords = val_coords
         elif split == 'predict':
-            self.data = all_data.to(rank)
-            self.coords = all_coords.to(rank)
+            self.data = all_data
+            self.coords = all_coords
 
     @staticmethod
     def _get_mgrid(sidelen, dim=2):
@@ -73,6 +72,32 @@ class VideoDatasetBase:
         pixel_coords = torch.Tensor(pixel_coords).view(-1, dim)
         return pixel_coords
 
+    def sample_data(self):
+        coords = self.coords # T,H,W,3
+        data = self.data # T,H,W,3
+        batch = dict()
+
+        n_frames = coords.shape[0]
+        frame_ids = torch.arange(n_frames, device=coords.device)
+        if self.split in ['train']:
+            t = frame_ids.unsqueeze(-1).repeat(1, self.n_samples).view(-1)
+            y = torch.randint(0, coords.shape[1], size=(t.shape[0],), device=coords.device)
+            x = torch.randint(0, coords.shape[2], size=(t.shape[0],), device=coords.device)
+            coords = coords[t, y, x] # (F*S, 3)
+            data = data[t, y, x]
+        else:
+            # add training coordinates to the batche to log the overfitting loss
+            batch.update({
+                'train_coords': self.train_coords.view(n_frames, -1, self.train_coords.shape[-1]).float(),
+                'train_data': self.train_data.view(n_frames, -1, self.train_data.shape[-1]).float(),
+            })
+        batch.update({
+            'coords': coords.view(n_frames, -1, coords.shape[-1]).float(), # T,S,3
+            'data': data.view(n_frames, -1, data.shape[-1]).float(), # T,S,3
+            'frame_ids': frame_ids.long(), # T
+        })
+        return batch
+
 # torch wrappers
 class VideoDataset(torch.utils.data.Dataset, VideoDatasetBase):
     def __init__(self, config, split):
@@ -82,9 +107,9 @@ class VideoDataset(torch.utils.data.Dataset, VideoDatasetBase):
         return 1
     
     def __getitem__(self, index):
-        return {
-            'index': index
-        }
+        batch = self.sample_data()
+        batch['index'] = index
+        return batch
 
 class VideoIterableDataset(torch.utils.data.IterableDataset, VideoDatasetBase):
     def __init__(self, config, split):
@@ -92,7 +117,8 @@ class VideoIterableDataset(torch.utils.data.IterableDataset, VideoDatasetBase):
 
     def __iter__(self):
         while True:
-            yield {}
+            batch = self.sample_data()
+            yield batch
 
 # pl wrapper
 @datasets.register('video_dataset')
@@ -123,7 +149,7 @@ class VideoDataModule(pl.LightningDataModule):
         sampler = None
         return torch.utils.data.DataLoader(
             dataset, 
-            num_workers=0,
+            num_workers=8,
             batch_size=batch_size,
             pin_memory=True,
             sampler=sampler

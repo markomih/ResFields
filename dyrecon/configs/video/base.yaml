@@ -8,6 +8,8 @@ dataset:
   scene: ${basename:${dataset.video_path}}
   video_path: skvideo.datasets.bikes # or ../datasets/video_data/${dataset.scene}
   test_every: 10  # every 10th pixel used for testing and removed from training
+  sampling:
+    n_samples: 200000
 
 model:
   name: siren_mlp
@@ -21,15 +23,12 @@ model:
   capacity: n_frames
   mode: lookup
 
-  sampling:
-    n_samples: 200000
-
 system:
   name: video_system
   optimizer:
     name: Adam
     args:
-      lr: 0.0005 #5e-4 0.0001
+      lr: 0.00005 #5e-4 0.0001
   scheduler:
     name: CosineAnnealingLR
     args:

@@ -5,6 +5,8 @@ model:
   name: ngp_mlp
   in_features: 3
   out_features: 3
+  n_levels: 16
+  log2_hashmap_size: 20 # 2**14 - 2**24
   hidden_features: 64
   num_hidden_layers: 2
 

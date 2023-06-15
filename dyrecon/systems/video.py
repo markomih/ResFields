@@ -17,8 +17,6 @@ class VideoSystem(BaseSystem):
     def prepare(self):
         if self.config.model.capacity == 'n_frames':
             self.config.model.capacity = self.config.model.metadata.n_frames
-        self.sampling = self.config.model.sampling
-        self.n_samples = self.sampling.n_samples // self.config.model.metadata.n_frames
 
     def forward(self, coords, frame_ids):
         # coords: (T, S, 3)
@@ -33,28 +31,34 @@ class VideoSystem(BaseSystem):
         return pred
     
     def preprocess_data(self, batch, stage):
-        coords = self.dataset.coords # T,H,W,3
-        data = self.dataset.data # T,H,W,3
+        for key, val in batch.items():
+            if torch.is_tensor(val):
+                batch[key] = val.squeeze(0).to(self.device)
+                if val.dtype == torch.float32 and self.trainer.precision==16:
+                    batch[key] = batch[key].to(torch.float16)
+        # coords = self.dataset.coords # T,H,W,3
+        # data = self.dataset.data # T,H,W,3
 
-        n_frames = coords.shape[0]
-        frame_ids = torch.arange(n_frames, device=coords.device)
-        if stage in ['train']:
-            t = frame_ids.unsqueeze(-1).repeat(1, self.n_samples).view(-1)
-            y = torch.randint(0, coords.shape[1], size=(t.shape[0],), device=coords.device)
-            x = torch.randint(0, coords.shape[2], size=(t.shape[0],), device=coords.device)
-            coords = coords[t, y, x] # (F*S, 3)
-            data = data[t, y, x]
-        else:
-            # add training coordinates to the batche to log the overfitting loss
-            batch.update({
-                'train_coords': self.dataset.train_coords.view(n_frames, -1, self.dataset.train_coords.shape[-1]),
-                'train_data': self.dataset.train_data.view(n_frames, -1, self.dataset.train_data.shape[-1]),
-            })
-        batch.update({
-            'coords': coords.view(n_frames, -1, coords.shape[-1]), # T,S,3
-            'data': data.view(n_frames, -1, data.shape[-1]), # T,S,3
-            'frame_ids': frame_ids, # T
-        })
+        # n_frames = coords.shape[0]
+        # import pdb; pdb.set_trace()
+        # frame_ids = torch.arange(n_frames, device=coords.device)
+        # if stage in ['train']:
+        #     t = frame_ids.unsqueeze(-1).repeat(1, self.n_samples).view(-1)
+        #     y = torch.randint(0, coords.shape[1], size=(t.shape[0],), device=coords.device)
+        #     x = torch.randint(0, coords.shape[2], size=(t.shape[0],), device=coords.device)
+        #     coords = coords[t, y, x] # (F*S, 3)
+        #     data = data[t, y, x]
+        # else:
+        #     # add training coordinates to the batche to log the overfitting loss
+        #     batch.update({
+        #         'train_coords': self.dataset.train_coords.view(n_frames, -1, self.dataset.train_coords.shape[-1]),
+        #         'train_data': self.dataset.train_data.view(n_frames, -1, self.dataset.train_data.shape[-1]),
+        #     })
+        # batch.update({
+        #     'coords': coords.view(n_frames, -1, coords.shape[-1]), # T,S,3
+        #     'data': data.view(n_frames, -1, data.shape[-1]), # T,S,3
+        #     'frame_ids': frame_ids, # T
+        # })
 
     def training_step(self, batch, batch_idx):
         pred = self(batch['coords'], batch['frame_ids'])
