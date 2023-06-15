@@ -7,9 +7,8 @@ dataset:
   val_load_time_steps: 1
   name: tsdf_dataset
   scene: ${basename:${dataset.path}}
-  test_every: 10
   path: ../datasets/DeformingThings4D/bear3EP_Agression.anime
-  num_samples: 200000
+  num_samples: 500000
 
 model:
   name: siren_mlp
