@@ -54,7 +54,7 @@ class Linear(torch.nn.Linear):
                 delta_w.unsqueeze(0).unsqueeze(-1), # 1, F_out*F_in, C, 1
                 torch.cat([torch.zeros_like(grid_query), grid_query], dim=-1), 
                 padding_mode='border', 
-                mode='nearest',
+                mode='bilinear',
                 align_corners=True
             ) # 1, F_out*F_in, N, 1
             out = out.view(*self.weight.shape, grid_query.shape[1]).permute(2, 0, 1) # F_out, F_in, N

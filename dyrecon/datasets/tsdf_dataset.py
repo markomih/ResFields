@@ -40,18 +40,44 @@ def anime_read(filename, normalize=True, ret_trimesh=False):
 
 
 class TSDFDatasetBase:
-    def setup(self, config, load_time_steps=100000):
+    def setup(self, config, split, load_time_steps=100000):
         path = config.path
+        self.split = split
         self.clip_sdf = config.get('clip_sdf', None)
-        self.meshes = self.load_meshes(path)
-        self.meshes = self.meshes[:load_time_steps]
-
-        self.n_frames = len(self.meshes)
-        self.per_mesh_samples = config.num_samples // self.n_frames
-        self.per_mesh_samples = self.per_mesh_samples - self.per_mesh_samples % 8
-
+        meshes = self.load_meshes(path)[:load_time_steps]
+        self.n_frames = len(meshes)
+        frame_id = torch.arange(self.n_frames)
         print('Frames', self.n_frames)
-        self.sdf_fn = [pysdf.SDF(mesh.vertices, mesh.faces) for mesh in self.meshes]
+
+        test_every = config.get('test_every', None)
+        if test_every is not None:
+            train_meshes, val_meshes = [], []
+            train_frame_id, val_frame_id = [], []
+            for i in range(len(meshes)):
+                if (i + 1) % test_every == 0:
+                    val_meshes.append(meshes[i])
+                    val_frame_id.append(frame_id[i])
+                else:
+                    train_meshes.append(meshes[i])
+                    train_frame_id.append(frame_id[i])
+
+            train_meshes, train_frame_id = train_meshes, torch.tensor(train_frame_id)
+            test_meshes, test_frame_id = val_meshes, torch.tensor(val_frame_id)
+        else:
+            train_meshes, train_frame_id = meshes, frame_id
+            test_meshes, test_frame_id = meshes, frame_id
+
+        if self.split == 'train':
+            self.meshes, self.frame_id = train_meshes, train_frame_id
+            self.sdf_fn = [pysdf.SDF(mesh.vertices, mesh.faces) for mesh in self.meshes]
+            self.per_mesh_samples = (config.num_samples//train_frame_id.numel()) - (config.num_samples//train_frame_id.numel()) % 8
+        elif self.split == 'test':
+            self.meshes, self.frame_id = test_meshes, test_frame_id
+        elif self.split == 'predict':
+            self.meshes, self.frame_id = meshes, frame_id
+        else:
+            raise NotImplementedError
+        print(self.split, self.frame_id)
 
     @staticmethod
     def load_meshes(path):
@@ -61,7 +87,7 @@ class TSDFDatasetBase:
             raise NotImplementedError
 
     def frame2time_step(self, frame_id):
-        time_step = 2*(frame_id / (self.n_frames+1) - 0.5) #[-1.0,1.0]
+        time_step = 2*(frame_id / (self.n_frames+2) - 0.5) #[-1.0,1.0]
         return time_step
 
     def time_step2frame(self, time_step):
@@ -76,17 +102,18 @@ class TSDFDatasetBase:
         return batch
 
     def sample_data(self):
+        assert self.split in ['train']
         # 1/2 points on the surface, 3/8 perturbed surface points, 1/8 uniform points
         n_samp = self.per_mesh_samples
         points_surface = np.stack([mesh.sample(n_samp*7//8) for mesh in self.meshes])
         points_surface[:, n_samp // 2:] += 0.01 * np.random.randn(*points_surface[:, n_samp // 2:].shape)
 
         # random
-        points_uniform = np.random.rand(self.n_frames, n_samp // 8, 3) * 2 - 1
+        points_uniform = np.random.rand(self.frame_id.shape[0], n_samp // 8, 3) * 2 - 1
         points = np.concatenate([points_surface, points_uniform], axis=1).astype(np.float32) # N_frames, n_samp, 3
 
-        sdfs = np.zeros((self.n_frames, n_samp, 1))
-        sdfs[:, n_samp // 2:] = np.stack([-self.sdf_fn[fid](points[fid, n_samp // 2:]).reshape(-1, 1) for fid in range(self.n_frames)]).astype(np.float32)
+        sdfs = np.zeros((points.shape[0], n_samp, 1))
+        sdfs[:, n_samp // 2:] = np.stack([-self.sdf_fn[fid](points[fid, n_samp // 2:]).reshape(-1, 1) for fid in range(points.shape[0])]).astype(np.float32)
 
         # clip sdf
         if self.clip_sdf is not None:
@@ -95,22 +122,21 @@ class TSDFDatasetBase:
         sdfs = torch.from_numpy(sdfs)
         points = torch.from_numpy(points)
         
-        frame_id = torch.arange(self.n_frames)
-        time_steps = self.frame2time_step(frame_id.view(-1, 1, 1).expand(-1, points.shape[1], -1))
+        time_steps = self.frame2time_step(self.frame_id.view(-1, 1, 1).expand(-1, points.shape[1], -1))
         coords = torch.cat((time_steps, points), dim=-1)
         to_ret = {
             'coords': coords.float(), # T, S, 4
-            'frame_id': frame_id.long(), # T
+            'frame_id': self.frame_id.long(), # T
             'data': sdfs.float(), # T, S, 1
         }
         return  to_ret
 
 class TSDFDataset(torch.utils.data.Dataset, TSDFDatasetBase):
-    def __init__(self, config, load_time_steps=100000):
-        self.setup(config, load_time_steps)
+    def __init__(self, config, split, load_time_steps=100000):
+        self.setup(config, split, load_time_steps)
 
     def __len__(self):
-        return self.n_frames
+        return len(self.meshes)
     
     def __getitem__(self, index):
         mesh = self.meshes[index]
@@ -123,8 +149,8 @@ class TSDFDataset(torch.utils.data.Dataset, TSDFDatasetBase):
 
 
 class TSDFIterableDataset(torch.utils.data.IterableDataset, TSDFDatasetBase):
-    def __init__(self, config, load_time_steps=100000):
-        self.setup(config, load_time_steps)
+    def __init__(self, config, split, load_time_steps=100000):
+        self.setup(config, split, load_time_steps)
 
     def __iter__(self):
         while True:
@@ -140,13 +166,13 @@ class TSDFDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         load_time_steps = self.config.get('load_time_steps', 100000)
         if stage in [None, 'fit']:
-            self.train_dataset = TSDFIterableDataset(self.config, load_time_steps)
+            self.train_dataset = TSDFIterableDataset(self.config, 'train', load_time_steps)
         if stage in [None, 'fit', 'validate']:
-            self.val_dataset = TSDFDataset(self.config, self.config.get('val_load_time_steps', load_time_steps))
+            self.val_dataset = TSDFDataset(self.config, 'test', self.config.get('val_load_time_steps', load_time_steps))
         if stage in [None, 'test']:
-            self.test_dataset = TSDFDataset(self.config, self.config.get('test_load_time_steps', load_time_steps))
-        # if stage in [None, 'predict']:
-        #     self.predict_dataset = TSDFPredictDataset(self.config, self.config.train_split)
+            self.test_dataset = TSDFDataset(self.config, 'test', self.config.get('test_load_time_steps', load_time_steps))
+        if stage in [None, 'predict']:
+            self.predict_dataset = TSDFDataset(self.config, 'predict', self.config.get('test_load_time_steps', load_time_steps))
 
     @staticmethod
     def get_metadata(config):

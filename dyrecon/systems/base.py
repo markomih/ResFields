@@ -63,34 +63,42 @@ class BaseSystem(pl.LightningModule, SaverMixin):
     Implementing on_after_batch_transfer of DataModule does the same.
     But on_after_batch_transfer does not support DP.
     """
+    # on batch start
     def on_train_batch_start(self, batch, batch_idx, unused=0):
         self.dataset = self.trainer.datamodule.train_dataloader().dataset
         self.preprocess_data(batch, 'train')
+
+    def on_validation_batch_start(self, batch, batch_idx, dataloader_idx=0):
+        self.dataset = self.trainer.datamodule.val_dataloader().dataset
+        self.preprocess_data(batch, 'validation')
     
+    def on_test_batch_start(self, batch, batch_idx, dataloader_idx=0):
+        self.dataset = self.trainer.datamodule.test_dataloader().dataset
+        self.preprocess_data(batch, 'test')
+
+    def on_predict_batch_start(self, batch, batch_idx, dataloader_idx=0):
+        self.dataset = self.trainer.datamodule.predict_dataloader().dataset
+        self.preprocess_data(batch, 'predict')
+
+    # on epoch start
     def on_validation_epoch_start(self):
         self.validation_step_outputs = []
 
     def on_test_epoch_start(self):
         self.test_step_outputs = []
 
-    def on_validation_batch_start(self, batch, batch_idx, dataloader_idx=0):
-        self.dataset = self.trainer.datamodule.val_dataloader().dataset
-        self.preprocess_data(batch, 'validation')
+    def on_predict_epoch_start(self):
+        self.predict_step_outputs = []
 
+    # on epoch end
     def on_validation_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
         self.validation_step_outputs.append(outputs)
-
-    def on_test_batch_start(self, batch, batch_idx, dataloader_idx=0):
-        self.dataset = self.trainer.datamodule.test_dataloader().dataset
-        self.preprocess_data(batch, 'test')
 
     def on_test_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
         self.test_step_outputs.append(outputs)
 
-    def on_predict_batch_start(self, batch, batch_idx, dataloader_idx=0):
-        self.dataset = self.trainer.datamodule.predict_dataloader().dataset
-        self.predict_output = []
-        self.preprocess_data(batch, 'predict')
+    def on_predict_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
+        self.predict_step_outputs.append(outputs)
     
     def training_step(self, batch, batch_idx):
         raise NotImplementedError

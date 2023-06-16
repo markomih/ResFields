@@ -440,11 +440,11 @@ class SirenMLP(BaseModel):
             # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of factor 30
             m.weight.uniform_(-1 / num_input, 1 / num_input)
 
-    def forward(self, coords, frame_id=None):
+    def forward(self, coords, frame_id=None, input_time=None):
         x = coords
         for lin in self.net[:-1]:
-            x = self.nl(lin(x, frame_id=frame_id))
-        x = self.net[-1](x, frame_id=frame_id)
+            x = self.nl(lin(x, frame_id=frame_id, input_time=input_time))
+        x = self.net[-1](x, frame_id=frame_id, input_time=input_time)
         return x
 
         
@@ -488,7 +488,7 @@ class NGPMLP(BaseModel):
             network_config=config['network']
         )
 
-    def forward(self, coords, frame_id=None):
+    def forward(self, coords, frame_id=None, input_time=None):
         # coords: (n_points, dim) # range (-1, 1)
         coords = coords * 0.5 + 0.5  # rescale to (0, 1)
         if len(coords.shape) == 3:

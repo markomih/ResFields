@@ -25,12 +25,16 @@ class TSDFSystem(BaseSystem):
         self.n_frames = self.config.model.metadata.n_frames
         if self.config.model.capacity == 'n_frames':
             self.config.model.capacity = self.n_frames
+        elif self.config.model.capacity.startswith('fraction'):
+            fraction = float(self.config.model.capacity.split('_')[-1])
+            self.config.model.capacity = int(fraction * self.n_frames)
+            self.config.model.mode = 'interpolation'
 
         rnd_res = self.config.model.metadata.get('rnd_resolution', 512)
         self.mesh_renderer = MeshRenderer(rnd_res)
 
     def frame2time_step(self, frame_id):
-        time_step = 2*(frame_id / (self.n_frames+1) - 0.5) #[-1.0,1.0]
+        time_step = 2*(frame_id / (self.n_frames+2) - 0.5) #[-1.0,1.0]
         return time_step
 
     def preprocess_data(self, batch, stage):
@@ -41,8 +45,10 @@ class TSDFSystem(BaseSystem):
     def forward(self, coords, frame_id):
         # coords: (T, S, 4) txyz
         # frame_id: (T)
+        # input_time: (T)
         # return: (T, S, 3))
-        pred = self.model(coords, frame_id)
+        input_time = self.frame2time_step(frame_id)
+        pred = self.model(coords, frame_id, input_time)
         return pred
 
     def training_step(self, batch, batch_idx):
@@ -59,7 +65,7 @@ class TSDFSystem(BaseSystem):
             pts = pts.view(1, -1, 3).to(frame_id.device)
             pts_time = torch.full_like(pts[..., :1], time_step)
             coords = torch.cat((pts_time, pts), dim=-1)
-            sdf = self.model(coords, frame_id=frame_id)
+            sdf = self.model(coords, frame_id=frame_id, input_time=time_step)
             return -sdf.view(-1)
         
         bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
@@ -93,7 +99,7 @@ class TSDFSystem(BaseSystem):
             {'type': 'rgb', 'img': rnd_pred, 'kwargs': {'data_format': 'HWC'}},
         ]
         file_name = f"{batch['index'].squeeze().item():06d}"
-        if prefix == 'test':
+        if prefix in ['test', 'predict']:
             self.save_image_grid(f"rgb_gt/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-2]])
             self.save_image_grid(f"rgb/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-1]])
         img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}/{file_name}.png", _log_imgs)
@@ -110,6 +116,15 @@ class TSDFSystem(BaseSystem):
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx, prefix='test')
+
+    def predict_step(self, batch, batch_idx):
+        return self.validation_step(batch, batch_idx, prefix='predict')
+
+    def on_predict_epoch_end(self, *args, **kwargs):
+        if self.trainer.is_global_zero:
+            prefix = 'predict'
+            idir = f"it{self.global_step:06d}-{prefix}"
+            self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=20)
 
     def on_validation_epoch_end(self, prefix='val'):
         out = self.all_gather(self.validation_step_outputs)
