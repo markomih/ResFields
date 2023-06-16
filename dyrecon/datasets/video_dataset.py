@@ -21,17 +21,32 @@ class VideoDatasetBase:
         assert split in ['train', 'test', 'predict']
         self.split = split
         vid = load_video(config.video_path)
-        test_every = config.test_every
+        test_fraction = config.test_fraction
 
         sidelength = vid.shape[:-1] # T x H x W
-        all_mgrid = self._get_mgrid(sidelength, dim=3).view(*sidelength, 3) # TxHxW x 3
-        all_data = torch.from_numpy(vid).float() # TxHxW x 3
+        self.sidelength = sidelength
+        all_mgrid = self._get_mgrid(sidelength, dim=3).view(sidelength[0], -1, 3) # Tx H*W x 3
+        all_data = torch.from_numpy(vid).float().view(vid.shape[0], -1, 3) # T x H*W x 3
+        n_val_samples_per_frame = int(test_fraction * all_mgrid.shape[1])
+        self.n_frames = all_mgrid.shape[0]
 
-        val_ids = np.arange(0, all_mgrid.shape[2], test_every)
-        train_ids = np.delete(np.arange(0, all_mgrid.shape[2]), val_ids)
+        val_ids = np.stack([np.random.choice(np.arange(all_data.shape[1]), size=n_val_samples_per_frame, replace=False) for _ in range(self.n_frames)])
+        train_ids = np.stack([np.delete(np.arange(all_data.shape[1]), val_ids[_i]) for _i in range(self.n_frames)])
+        
+        t_ind = np.arange(0, self.n_frames)[:, None]
+        np.random.seed(42)
+        val_tind, train_tind = t_ind.repeat(val_ids.shape[1], axis=1).flatten(), t_ind.repeat(train_ids.shape[1], axis=1).flatten()
+        val_ids, train_ids = val_ids.reshape(-1), train_ids.reshape(-1)
 
-        train_coords, train_data = all_mgrid[:, :, train_ids], all_data[:, :, train_ids]
-        val_coords, val_data = all_mgrid[:, :, val_ids], all_data[:, :, val_ids]
+        print(train_ids[77], train_ids[777], train_ids[7777], val_ids[77], val_ids[777], val_ids[7777])
+
+        # split into train and val
+        train_coords = all_mgrid[train_tind, train_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+        train_data = all_data[train_tind, train_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+
+        val_coords = all_mgrid[val_tind, val_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+        val_data = all_data[val_tind, val_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+
         all_coords, all_data = all_mgrid, all_data
 
         # set parameters
@@ -73,8 +88,8 @@ class VideoDatasetBase:
         return pixel_coords
 
     def sample_data(self):
-        coords = self.coords # T,H,W,3
-        data = self.data # T,H,W,3
+        coords = self.coords # T,S,3
+        data = self.data # T,S,3
         batch = dict()
 
         n_frames = coords.shape[0]
@@ -82,11 +97,10 @@ class VideoDatasetBase:
         if self.split in ['train']:
             t = frame_ids.unsqueeze(-1).repeat(1, self.n_samples).view(-1)
             y = torch.randint(0, coords.shape[1], size=(t.shape[0],), device=coords.device)
-            x = torch.randint(0, coords.shape[2], size=(t.shape[0],), device=coords.device)
-            coords = coords[t, y, x] # (F*S, 3)
-            data = data[t, y, x]
+            coords = coords[t, y] # (F*S, 3)
+            data = data[t, y]
         else:
-            # add training coordinates to the batche to log the overfitting loss
+            # add training coordinates to the batch to log the overfitting loss
             batch.update({
                 'train_coords': self.train_coords.view(n_frames, -1, self.train_coords.shape[-1]).float(),
                 'train_data': self.train_data.view(n_frames, -1, self.train_data.shape[-1]).float(),
