@@ -7,7 +7,7 @@ dataset:
   name: video_dataset
   scene: ${basename:${dataset.video_path}}
   video_path: skvideo.datasets.bikes # or ../datasets/video_data/${dataset.scene}
-  test_every: 10  # every 10th pixel used for testing and removed from training
+  test_fraction: 0.1  # every 10th pixel used for testing and removed from training
   sampling:
     n_samples: 200000
 
