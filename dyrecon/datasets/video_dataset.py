@@ -163,7 +163,7 @@ class VideoDataModule(pl.LightningDataModule):
         sampler = None
         return torch.utils.data.DataLoader(
             dataset, 
-            num_workers=8,
+            num_workers=5,
             batch_size=batch_size,
             pin_memory=True,
             sampler=sampler
