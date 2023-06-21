@@ -21,6 +21,7 @@ model:
   independent_layers: []
   capacity: n_frames
   mode: lookup
+  compression: vm
   isosurface:
     resolution: 512
 system:

@@ -1,4 +1,10 @@
 import torch
+try:
+    import tensorly as tl
+    from tensorly.random.base import random_cp
+    tl.set_backend('pytorch')
+except ImportError:
+    pass
 
 class Linear(torch.nn.Linear):
     r"""Applies a ResField Linear transformation to the incoming data: :math:`y = x(A + \delta A_t)^T + b`
@@ -25,16 +31,34 @@ class Linear(torch.nn.Linear):
     """
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True,
-                 device=None, dtype=None, rank=0, capacity=0, mode='lookup') -> None:
+                 device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm') -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
-        assert mode in ['lookup', 'interpolation']
+        assert mode in ['lookup', 'interpolation', 'cp']
+        assert compression in ['vm', 'cp', 'none', 'tucker']
         self.rank = rank
         self.capacity = capacity
+        self.compression = compression
         self.mode = mode
 
-        if self.rank > 0 and self.capacity > 0:
-            self.register_parameter('weights_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.rank)))) # C, R
-            self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])))) # R, F_out*F_in
+        if self.rank is not None and self.capacity is not None and self.capacity > 0:
+            if self.compression == 'vm':
+                self.register_parameter('weights_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.rank)))) # C, R
+                self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])))) # R, F_out*F_in
+            elif self.compression == 'none':
+                self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
+            elif self.compression == 'cp':
+                weights, factors = random_cp((capacity, self.weight.shape[0], self.weight.shape[1]), self.rank, normalise_factors=False) # F_out, F_in
+                self.register_parameter(f'lin_w', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(weights))))
+                self.register_parameter(f'lin_f1', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(factors[0]))))
+                self.register_parameter(f'lin_f2', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(factors[1]))))
+                self.register_parameter(f'lin_f3', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(factors[2]))))
+            elif self.compression == 'tucker':
+                tmp = tl.decomposition.tucker(self.weight[None].repeat((capacity, 1, 1)), rank=self.rank, init='random', tol=10e-5, random_state=12345, n_iter_max=1)
+                self.core = torch.nn.Parameter(0.01*torch.randn_like(tmp.core))
+                factors = [0.01*torch.randn_like(_f) for _f in tmp.factors]
+                self.factors = torch.nn.ParameterList([torch.nn.Parameter(_f) for _f in factors])
+            else:
+                raise NotImplementedError
 
     def _get_delta_weight(self, input_time=None, frame_id=None):
         """Returns the delta weight matrix for a given time index.
@@ -46,7 +70,23 @@ class Linear(torch.nn.Linear):
             delta weight matrix of shape (N, F_out, F_in)
         """
         # return self.weight + torch.einsum('tr,rfi->tfi', self.weights_t, self.matrix_t)
-        delta_w = (self.weights_t @ self.matrix_t).t() + self.weight.view(-1, 1) # F_out*F_in, C
+        if self.compression == 'vm':
+            delta_w = (self.weights_t @ self.matrix_t).t() + self.weight.view(-1, 1) # F_out*F_in, C
+        elif self.compression == 'none':
+            delta_w = self.matrix_t.t() + self.weight.view(-1, 1) # F_out*F_in, C
+        elif self.compression == 'cp':
+            _weights = getattr(self, f'lin_w')
+            _factors = [getattr(self, f'lin_f1'), getattr(self, f'lin_f2'), getattr(self, f'lin_f3')]
+            lin_w = tl.cp_to_tensor((_weights, _factors)) # C, F_out, F_in
+            delta_w = lin_w.view(lin_w.shape[0], -1).t() + self.weight.view(-1, 1) # F_out*F_in, C
+        elif self.compression == 'tucker':
+            core = getattr(self, f'core')
+            factors = getattr(self, f'factors')
+            lin_w = tl.tucker_to_tensor((core, factors)) # C, F_out, F_in
+            delta_w = lin_w.reshape(lin_w.shape[0], -1).t() + self.weight.view(-1, 1) # F_out*F_in, C
+        else:
+            raise NotImplementedError
+
         if self.mode == 'interpolation':
             grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1
 
@@ -60,6 +100,9 @@ class Linear(torch.nn.Linear):
             out = out.view(*self.weight.shape, grid_query.shape[1]).permute(2, 0, 1) # F_out, F_in, N
         elif self.mode == 'lookup':
             out = delta_w.permute(1, 0).view(-1, *self.weight.shape)[frame_id] # N, F_out, F_in
+        else:
+            raise NotImplementedError
+
         return out # N, F_out, F_in
 
     def forward(self, input: torch.Tensor, input_time=None, frame_id=None) -> torch.Tensor:
@@ -83,6 +126,9 @@ class Linear(torch.nn.Linear):
             return (weight @ input.permute(0, 2, 1) + self.bias.view(1, -1, 1)).permute(0, 2, 1) # B, S, F_out
 
     def extra_repr(self) -> str:
-        return 'in_features={}, out_features={}, bias={}, rank={}, capacity={}, mode={}'.format(
+        _str = 'in_features={}, out_features={}, bias={}'.format(
             self.in_features, self.out_features, self.bias is not None, self.rank, self.capacity, self.mode
         )
+        if self.rank is not None and self.capacity is not None:
+            _str += ', rank={}, capacity={}, compression={}'.format(self.rank, self.capacity, self.compression)
+        return _str

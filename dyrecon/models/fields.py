@@ -410,6 +410,7 @@ class SirenMLP(BaseModel):
         independent_layers = self.config.independent_layers
         capacity = self.config.capacity
         mode = self.config.get('mode', 'lookup')
+        compression = self.config.compression
 
         dims = [in_features] + [hidden_features for _ in range(num_hidden_layers)] + [out_features]
         self.nl = Sine()
@@ -418,7 +419,7 @@ class SirenMLP(BaseModel):
             _rank = composition_rank if i in independent_layers else 0
             _capacity = capacity if i in independent_layers else 0
 
-            lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode)
+            lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode, compression=compression)
             lin.apply(self.first_layer_sine_init if i == 0 else self.sine_init)
             self.net.append(lin)
         self.net = torch.nn.ModuleList(self.net)
