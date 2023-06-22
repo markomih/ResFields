@@ -45,7 +45,7 @@ class Linear(torch.nn.Linear):
                 self.register_parameter('weights_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.rank)))) # C, R
                 self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])))) # R, F_out*F_in
             elif self.compression == 'none':
-                self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
+                self.register_parameter('matrix_t', torch.nn.Parameter(0.0*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
             elif self.compression == 'cp':
                 weights, factors = random_cp((capacity, self.weight.shape[0], self.weight.shape[1]), self.rank, normalise_factors=False) # F_out, F_in
                 self.register_parameter(f'lin_w', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(weights))))
