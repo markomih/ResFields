@@ -278,7 +278,7 @@ class DySDFDataModule(pl.LightningDataModule):
         sampler = None
         return torch.utils.data.DataLoader(
             dataset, 
-            num_workers=8,#os.cpu_count(), 
+            num_workers=6,#os.cpu_count(), 
             batch_size=batch_size,
             pin_memory=True,
             sampler=sampler

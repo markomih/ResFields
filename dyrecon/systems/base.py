@@ -54,7 +54,7 @@ class BaseSystem(pl.LightningModule, SaverMixin):
             metrics = [k for k in out[0].keys() if 'loss' in k or 'metric' in k]
             metrics_dict = {}
             for key in metrics:
-                metrics_dict[key] = float(torch.cat([step_out[key] for step_out in out]).mean().detach().cpu().item())
+                metrics_dict[key] = float(torch.stack([step_out[key] for step_out in out]).mean().detach().cpu().item())
                 self.log(f'{prefix}/{key}', metrics_dict[key], prog_bar=True, rank_zero_only=True, sync_dist=True)
                 
             return metrics_dict

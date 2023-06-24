@@ -47,7 +47,15 @@ class DySDF(BaseModel):
         self.config.sdf_net.n_frames = self.n_frames
         self.sdf_net = models.make(self.config.sdf_net.name, self.config.sdf_net)
         self.color_net = models.make(self.config.color_net.name, self.config.color_net)
-        self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
+        
+        self.alpha_composing = self.config.get('alpha_composing', 'volsdf')
+        assert self.alpha_composing in ['volsdf', 'neus', 'nerf'], 'Only support volsdf, neus, nerf'
+        self.estimate_normals = self.alpha_ratio in ['volsdf', 'neus']
+        if self.alpha_composing in ['volsdf', 'neus']:
+            self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
+            self.mc_threshold = 0
+        else:
+            self.mc_threshold = 0.001
 
     def train(self, mode=True):
         self.randomized = mode and self.randomized
@@ -91,17 +99,23 @@ class DySDF(BaseModel):
             sdf = sdf.squeeze()
 
             # sdf = self.sdf_network.sdf(pts_canonical, ambient_coord, self.alpha_ratio, frame_id=time_step)
+            fill_value = 0.0
+            if self.alpha_composing in ['volsdf', 'neus']:
+                fill_value = 1e4
             if self.scene_aabb is not None:
                 eps = 0.025
                 bmin = self.scene_aabb[:3][None] + eps
                 bmax = self.scene_aabb[3:6][None] - eps
                 inside_mask = (pts > bmin[None]).all(-1) & (pts < bmax[None]).all(-1)
-                sdf[~inside_mask.squeeze()] = 1e4
-            return -sdf.view(-1)
+                sdf[~inside_mask.squeeze()] = fill_value
+            sdf = sdf.view(-1)
+            if self.alpha_composing in ['volsdf', 'neus']:
+                sdf = -sdf
+            return sdf
         
         bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
         bound_max = torch.tensor([ 1.0,  1.0,  1.0], dtype=torch.float32)
-        mesh = extract_geometry(bound_min, bound_max, resolution=resolution, threshold=0, query_func=_query_sdf)
+        mesh = extract_geometry(bound_min, bound_max, resolution=resolution, threshold=self.mc_threshold, query_func=_query_sdf)
         mesh.export(mesh_path)
         return mesh
 
@@ -121,9 +135,10 @@ class DySDF(BaseModel):
         to_ret = {
             'rgb': torch.zeros_like(rays_o),
             'opacity': torch.zeros_like(rays_o[:, :1]),
-            'normal': torch.zeros_like(rays_o),
             'depth': torch.zeros_like(rays_o[:, :1]),
         }
+        if self.estimate_normals:
+            to_ret['normal'] = torch.zeros_like(rays_o)
         # sample points for volume rendering
         render_step_size = self.get_render_step_size()
         with torch.no_grad():
@@ -173,36 +188,51 @@ class DySDF(BaseModel):
             sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=rays_time.squeeze(-1), frame_id=frame_id.squeeze(-1))
             sdf, feature_vector = sdf_nn_output[..., :1], sdf_nn_output[..., 1:] # (n_rays, n_samples, 1), (n_rays, n_samples, F)
 
-            gradients_o =  torch.autograd.grad(outputs=sdf, inputs=pts, grad_outputs=torch.ones_like(sdf, requires_grad=False, device=sdf.device), create_graph=True, retain_graph=True, only_inputs=True)[0]
+            if self.estimate_normals:
+                gradients_o =  torch.autograd.grad(outputs=sdf, inputs=pts, grad_outputs=torch.ones_like(sdf, requires_grad=False, device=sdf.device), create_graph=True, retain_graph=True, only_inputs=True)[0]
+            else:
+                gradients_o = None
 
         color = self.color_net(feature=feature_vector, point=pts_canonical, ambient_code=ambient_codes, view_dir=rays_d, normal=gradients_o, alpha_ratio=self.alpha_ratio) # n_rays, n_samples, 3
 
         # volume rendering
-        weights = self.get_weight_vol_sdf(sdf, dists) # n_rays, n_samples, 1
+        weights = self.get_weight(sdf, dists) # n_rays, n_samples, 1
         
         comp_rgb = (color * weights).sum(dim=1) # n_rays, 3
         opacity = weights.sum(dim=1) # n_rays, 1
         depth = (weights*mid_z_vals.unsqueeze(-1)).sum(dim=1) # n_rays, 1
-        comp_normal = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
 
         to_ret['rgb'][inside_rays] = comp_rgb
         to_ret['opacity'][inside_rays] = opacity
-        to_ret['normal'][inside_rays] = comp_normal
         to_ret['depth'][inside_rays] = depth
 
         if self.background_color is not None:
             to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
 
-        if self.training:
-            to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
+        if self.estimate_normals:
+            to_ret['normal'][inside_rays] = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
+            if self.training:
+                to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
         return to_ret
 
     def log_variables(self):
-        return {
-            's_val': 1.0 / self.deviation_net.inv_s(),
-        }
+        to_ret = {}
+        if self.alpha_composing in ['volsdf', 'neus']:
+            to_ret['s_val'] = 1.0 / self.deviation_net.inv_s()
+        return to_ret
     
-    def get_weight_vol_sdf(self, sdf, dists):
+    def get_weight(self, nn_output, dists):
+        if self.alpha_composing == 'volsdf':
+            weight = self._get_weight_vol_sdf(nn_output, dists)
+        elif self.alpha_composing == 'neus':
+            raise NotImplementedError
+        elif self.alpha_composing == 'nerf':
+            weight = self._get_weight_nerf(nn_output, dists)
+        else:
+            raise NotImplementedError
+        return weight
+
+    def _get_weight_vol_sdf(self, sdf, dists):
         """ Compute the weights for volume rendering with the formulation from VolSDF.
         Args:
             sdf: Tensor with shape (n_rays, n_samples, 1). Dtype=float32.
@@ -211,6 +241,13 @@ class DySDF(BaseModel):
             weights: Tensor with shape (n_rays, n_samples). Dtype=float32.
         """
         density = self.deviation_net(sdf)
+        alpha = 1.0 - torch.exp(-density * dists.view(density.shape))
+        transmittance = torch.cumprod(torch.cat([torch.ones_like(alpha[:, :1]), 1. - alpha + 1e-7], dim=1), dim=1)[:, :-1] # n_rays, n_samples, 1
+        weights = alpha * transmittance
+        return weights
+
+    def _get_weight_nerf(self, raw, dists):
+        density = F.relu(raw)
         alpha = 1.0 - torch.exp(-density * dists.view(density.shape))
         transmittance = torch.cumprod(torch.cat([torch.ones_like(alpha[:, :1]), 1. - alpha + 1e-7], dim=1), dim=1)[:, :-1] # n_rays, n_samples, 1
         weights = alpha * transmittance
