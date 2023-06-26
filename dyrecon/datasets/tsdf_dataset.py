@@ -1,3 +1,5 @@
+import os
+import glob
 import trimesh
 import numpy as np
 import pysdf
@@ -5,7 +7,7 @@ import torch
 import pytorch_lightning as pl
 import datasets
 
-def anime_read(filename, normalize=True, ret_trimesh=False):
+def anime_read(filename, normalize=True):
     """
     filename: .anime file
     return:
@@ -83,6 +85,9 @@ class TSDFDatasetBase:
     def load_meshes(path):
         if path.endswith('.anime'):
             return anime_read(path)
+        elif os.path.isdir(path):
+            mesh_paths = sorted(glob.glob(os.path.join(path, '*')))
+            return [trimesh.load(_path) for _path in mesh_paths]
         else:
             raise NotImplementedError
 
