@@ -183,6 +183,17 @@ def custom_meshgrid(*args):
     else:
         return torch.meshgrid(*args, indexing='ij')
 
+def mape_loss(pred, target, reduction='mean'):
+    # pred, target: [B, 1], torch tensor
+    difference = (pred - target).abs()
+    scale = 1 / (target.abs() + 1e-2)
+    loss = difference * scale
+
+    if reduction == 'mean':
+        loss = loss.mean()
+    
+    return loss
+
 def extract_geometry(bound_min, bound_max, resolution, threshold, query_func):
     u = extract_fields(bound_min, bound_max, resolution, query_func)
     vertices, triangles = mcubes.marching_cubes(u, threshold)

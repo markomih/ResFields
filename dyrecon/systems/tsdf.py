@@ -5,7 +5,7 @@ import yaml
 import systems
 from systems.base import BaseSystem
 import torch.nn.functional as F
-from models.utils import extract_geometry
+from models.utils import extract_geometry, mape_loss
 
 try:
     from pytorch3d.structures.meshes import Meshes
@@ -53,7 +53,7 @@ class TSDFSystem(BaseSystem):
 
     def training_step(self, batch, batch_idx):
         pred = self(batch['coords'], batch['frame_id'])
-        loss = 1000.*F.mse_loss(pred, batch['data'])
+        loss = mape_loss(pred.reshape(-1, 1), batch['data'].reshape(-1, 1))
         self.log('train/loss', loss, prog_bar=True, rank_zero_only=True, sync_dist=True)
         return dict(loss=loss)
 
