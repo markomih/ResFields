@@ -34,7 +34,7 @@ class Linear(torch.nn.Linear):
                  device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm') -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
         assert mode in ['lookup', 'interpolation', 'cp']
-        assert compression in ['vm', 'cp', 'none', 'tucker']
+        assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet']
         self.rank = rank
         self.capacity = capacity
         self.compression = compression
@@ -46,6 +46,8 @@ class Linear(torch.nn.Linear):
                 self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])))) # R, F_out*F_in
             elif self.compression == 'none':
                 self.register_parameter('matrix_t', torch.nn.Parameter(0.0*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
+            elif self.compression == 'resnet':
+                self.register_parameter('resnet_vec', torch.nn.Parameter(0.0*torch.randn((self.capacity, self.weight.shape[0])))) # C, F_out
             elif self.compression == 'cp':
                 weights, factors = random_cp((capacity, self.weight.shape[0], self.weight.shape[1]), self.rank, normalise_factors=False) # F_out, F_in
                 self.register_parameter(f'lin_w', torch.nn.Parameter(0.01*torch.randn_like(torch.tensor(weights))))
@@ -115,7 +117,7 @@ class Linear(torch.nn.Linear):
         Returns:
             output: (B, S, F_out)
         """
-        if self.rank == 0 or self.capacity == 0:
+        if (self.rank is not None and self.capacity is not None and self.capacity > 0) or self.compression == 'resnet':
             return torch.nn.functional.linear(input, self.weight, self.bias)
 
         weight = self._get_delta_weight(input_time, frame_id) # B, F_out, F_in

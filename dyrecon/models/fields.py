@@ -145,7 +145,6 @@ class SDFNetwork(BaseModel):
                 lin = nn.utils.weight_norm(lin)
 
             setattr(self, "lin" + str(l), lin)
-        print(self)
         self.activation = nn.Softplus(beta=100)
 
     def forward(self, input_pts, topo_coord=None, alpha_ratio=1.0, input_time=None, frame_id=None):
@@ -423,7 +422,6 @@ class SirenMLP(BaseModel):
             lin.apply(self.first_layer_sine_init if i == 0 else self.sine_init)
             self.net.append(lin)
         self.net = torch.nn.ModuleList(self.net)
-        print(self)
 
     @staticmethod
     @torch.no_grad()
@@ -445,6 +443,11 @@ class SirenMLP(BaseModel):
         x = coords
         for lin in self.net[:-1]:
             x = self.nl(lin(x, frame_id=frame_id, input_time=input_time))
+            if lin.compression == 'resnet' and lin.capacity > 0:
+                if frame_id.numel() == 1:
+                    x = x + lin.resnet_vec[frame_id].view(1, 1, lin.resnet_vec.shape[-1])
+                else:
+                    x = x + lin.resnet_vec[:, None] # T, S, F_out
         x = self.net[-1](x, frame_id=frame_id, input_time=input_time)
         return x
 

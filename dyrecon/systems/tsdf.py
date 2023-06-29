@@ -65,6 +65,30 @@ class TSDFSystem(BaseSystem):
             pts = pts.view(1, -1, 3).to(frame_id.device)
             pts_time = torch.full_like(pts[..., :1], time_step)
             coords = torch.cat((pts_time, pts), dim=-1)
+            BENCHMARK = False
+            if BENCHMARK:
+                # measure inference time 
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+
+                with torch.no_grad():
+                    B = 100
+                    coord_tensor = torch.rand((B, 1000000, 4)).cuda()
+                    inf_time = []
+                    for b_ind in range(B):
+                        _tensor = coord_tensor[b_ind].unsqueeze(0)
+                        torch.cuda.synchronize()
+                        start.record()
+                        self.model(_tensor, frame_id=frame_id, input_time=time_step)
+                        end.record()
+                        torch.cuda.synchronize()
+                        time_end = start.elapsed_time(end) #time.time() - time_start
+                        inf_time.append(time_end)
+                    inf_time = float(np.mean(inf_time[3:]))
+                    print('Inference time: %f' % inf_time)
+
+                exit(0)
+
             sdf = self.model(coords, frame_id=frame_id, input_time=time_step)
             return -sdf.view(-1)
         

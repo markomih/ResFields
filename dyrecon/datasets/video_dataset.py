@@ -48,7 +48,18 @@ class VideoDatasetBase:
         val_data = all_data[val_tind, val_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
 
         all_coords, all_data = all_mgrid, all_data
+        if False:
+            # log video with the mask
+            all_data[val_tind, val_ids, 0] = 1.0
+            all_data[val_tind, val_ids, 1] = 0.0
+            all_data[val_tind, val_ids, 2] = 0.0
 
+            all_data = (all_data.view(*sidelength, 3).cpu().numpy()*255.0).clip(0,255).astype(np.uint8)
+            _path = config.scene + '_mask.mp4'
+            skvideo.io.vwrite(_path, all_data)
+            print('Saved video to', _path)
+            exit(0)
+        
         # set parameters
         self.train_data = train_data.float()
         self.train_coords = train_coords.float()
