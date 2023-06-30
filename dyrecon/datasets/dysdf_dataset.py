@@ -91,13 +91,15 @@ class DySDFDatasetBase():
             masks_lis = _sample(sorted(glob(os.path.join(data_dir, 'mask/*.png'))))
 
             images = torch.from_numpy(np.stack([cv.imread(im_name)[..., ::-1] for im_name in images_lis]) / 256.0)  # [n_images, H, W, 3]
-            masks  = torch.from_numpy(np.stack([cv.imread(im_name) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
-            # intrinsics_all_inv = torch.inverse(intrinsics_all)  # [n_images, 4, 4]
-
             all_c2w = pose_all.float()[:, :3, :4]
             all_images = images.float()
-            all_fg_masks = (masks > 0)[..., 0].float()
-            all_images = all_images*all_fg_masks[..., None].float()
+
+            self.has_masks = len(masks_lis) > 0
+            if self.has_masks:
+                masks  = torch.from_numpy(np.stack([cv.imread(im_name) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
+                all_fg_masks = (masks > 0)[..., 0].float()
+                all_images = all_images*all_fg_masks[..., None].float()
+                _all_fg_masks.append(all_fg_masks)
 
             self.h, self.w = all_images.shape[1:-1]
             frame_ids = torch.tensor(list(range(all_images.shape[0]))).long()
@@ -108,7 +110,6 @@ class DySDFDatasetBase():
             
             _all_c2w.append(all_c2w)
             _all_images.append(all_images)
-            _all_fg_masks.append(all_fg_masks)
             _frame_ids.append(frame_ids)
             _directions.append(directions)
 
@@ -122,18 +123,19 @@ class DySDFDatasetBase():
         self.device = torch.device('cpu') #get_rank()
         self.all_c2w = torch.cat(_all_c2w, dim=0).to(self.device)
         self.all_images = torch.cat(_all_images, dim=0).to(self.device)
-        self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(self.device)
         self.frame_ids = torch.cat(_frame_ids, dim=0).to(self.device)
         self.directions = torch.cat(_directions, dim=0).to(self.device)
         self.image_pixels = self.h * self.w
         self.time_max = frame_ids.max() + 1
         # compute indices of foreground pixels for sampling
-        self.fg_inds = torch.stack(torch.where((self.all_fg_masks > 0.0).bool()), -1)
-        self.bg_inds = torch.stack(torch.where(~(self.all_fg_masks > 0.0).bool()), -1)
-        yx_fg_mask = (self.all_fg_masks > 0.0).any(dim=0) # H, W
-        self.yx_fg_inds = torch.stack(torch.where(yx_fg_mask), -1) # n_fg_pixels, 2
-        self.yx_bg_inds = torch.stack(torch.where(~yx_fg_mask), -1) # n_bg_pixels, 2
-        print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.all_fg_masks.shape, self.frame_ids.shape, self.directions.shape)
+        if self.has_masks:
+            self.all_fg_masks = torch.cat(_all_fg_masks, dim=0).to(self.device)
+            self.fg_inds = torch.stack(torch.where((self.all_fg_masks > 0.0).bool()), -1)
+            self.bg_inds = torch.stack(torch.where(~(self.all_fg_masks > 0.0).bool()), -1)
+            yx_fg_mask = (self.all_fg_masks > 0.0).any(dim=0) # H, W
+            self.yx_fg_inds = torch.stack(torch.where(yx_fg_mask), -1) # n_fg_pixels, 2
+            self.yx_bg_inds = torch.stack(torch.where(~yx_fg_mask), -1) # n_bg_pixels, 2
+        print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.frame_ids.shape, self.directions.shape)
 
     def frame_id_to_time(self, frame_id):
         return (frame_id / self.time_max) * 2.0 - 1.0 # range of (-1, 1)
@@ -170,31 +172,34 @@ class DySDFDatasetBase():
         return index, y, x
 
     def sample_data(self, index=None):
+        to_ret = {}
         if self.split == 'train':
             index, y, x = self._sample_pixels()
             directions = self.directions[index, y, x] # (B,3)
             c2w = self.all_c2w[index]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.all_images[index, y, x].view(-1, self.all_images.shape[-1])
-            fg_mask = self.all_fg_masks[index, y, x].view(-1)
+            if self.has_masks:
+                to_ret['mask'] = self.all_fg_masks[index, y, x].view(-1) # n_rays
         else:
             c2w = self.all_c2w[index].squeeze(0)
             directions = self.directions[index].squeeze(0) #(H,W,3)
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.all_images[index].view(-1, self.all_images.shape[-1])
-            fg_mask = self.all_fg_masks[index].view(-1)
+            if self.has_masks:
+                to_ret['mask'] = self.all_fg_masks[index, y, x].view(-1) # n_rays
         frame_id = self.frame_ids[index]
         rays_time = self.frame_id_to_time(frame_id).view(-1, 1)
         if rays_time.shape[0] != rays_o.shape[0]:
             rays_time = rays_time.expand(rays_o.shape[0], rays_time.shape[1])
         rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
 
-        return {
+        to_ret.update({
             'rays': rays, # n_rays, 7
             'frame_id': frame_id.squeeze(), # n_rays
             'rgb': rgb, # n_rays, 3
-            'mask': fg_mask, # n_rays
-        }
+        })
+        return to_ret
 
 class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
     def __init__(self, config, camera_list, split, load_time_steps=100000):

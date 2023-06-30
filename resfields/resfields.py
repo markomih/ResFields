@@ -117,7 +117,7 @@ class Linear(torch.nn.Linear):
         Returns:
             output: (B, S, F_out)
         """
-        if (self.rank is not None and self.capacity is not None and self.capacity > 0) or self.compression == 'resnet':
+        if self.rank == 0 or self.capacity == 0 or self.compression == 'resnet':
             return torch.nn.functional.linear(input, self.weight, self.bias)
 
         weight = self._get_delta_weight(input_time, frame_id) # B, F_out, F_in

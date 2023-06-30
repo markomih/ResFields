@@ -43,7 +43,7 @@ class DySDFSystem(BaseSystem):
                 raise NotImplementedError
         else:
             self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
-        if 'rgb' in batch:
+        if 'rgb' in batch and 'mask' in batch:
             batch['rgb'] = batch['rgb']*batch['mask'][..., None] + self.model.background_color * (1 - batch['mask'][..., None])
         setattr(self.model, 'alpha_ratio', self.alpha_ratio)
 
@@ -60,8 +60,9 @@ class DySDFSystem(BaseSystem):
     def _level_fn(self, batch: Dict[str, Any], out: Dict[str, torch.Tensor], level_name: str):
         loss, stats = 0, OrderedDict()
         loss_weight = self.config.system.loss
+        mask = batch.get('mask', None)
         if 'rgb' in batch and loss_weight.get('rgb', 0.0) > 0.0:
-            stats['loss_rgb'] = masked_mean((out["rgb"] - batch["rgb"]).abs(), batch["mask"].reshape(-1, 1))
+            stats['loss_rgb'] = masked_mean((out["rgb"] - batch["rgb"]).abs(), mask.reshape(-1, 1) if mask is not None else mask)
             loss += loss_weight.rgb*stats['loss_rgb']
 
         if 'mask' in batch and loss_weight.get('mask', 0.0) > 0.0:
@@ -76,11 +77,13 @@ class DySDFSystem(BaseSystem):
         if not self.training:
             W, H = self.dataset.w, self.dataset.h
             stats.update(dict(
-                metric_mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], batch['mask'].view(-1, 1)),
+                metric_mpsnr = criterions.compute_psnr(out['rgb'], batch['rgb'], mask.reshape(-1, 1) if mask is not None else mask),
                 metric_psnr = criterions.compute_psnr(out['rgb'], batch['rgb']),
                 metric_ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
-                metric_mask = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze()),
             ))
+            if mask is not None:
+                stats['metric_mask'] = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask'] > 0.5).float().squeeze()),
+
 
         return loss, stats
 
