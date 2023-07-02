@@ -240,7 +240,7 @@ class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
 
     def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, time_step=0):
         _pose_0, _pose_1 = np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 1.0, 1.0, 1.0])
-        _pose_0[:3, :3], _pose_1[:3, :3] = pose_0[:3, :3], pose_1[:3, :3]
+        _pose_0[:3], _pose_1[:3] = pose_0[:3], pose_1[:3]
 
         RT0, RT1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
         T = RT0[:3, 3]*(1.0 - ratio) + RT1[:3, 3]*ratio
