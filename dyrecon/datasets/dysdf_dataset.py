@@ -238,40 +238,63 @@ class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
             rays_list.append(self.gen_rays_between(pose_1, pose_2, ratio, time_step=rays_time))
         return rays_list, frame_list
 
-    def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, resolution_level=1, time_step=0):
-        """
-        Interpolate pose between two cameras.
-        """
-        l = resolution_level
-        tx = torch.linspace(0, self.w - 1, self.w // l)
-        ty = torch.linspace(0, self.h - 1, self.h // l)
-        pixels_x, pixels_y = torch.meshgrid(tx, ty)
-        p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=-1)  # W, H, 3
-        p = torch.matmul(self.intrinsics_inv[None, None, :3, :3], p[:, :, :, None]).squeeze()  # W, H, 3
-        rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)  # W, H, 3
-        trans = pose_0[:3, 3]*(1.0 - ratio) + pose_1[:3, 3]*ratio
+    def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, time_step=0):
         _pose_0, _pose_1 = np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 1.0, 1.0, 1.0])
         _pose_0[:3, :3], _pose_1[:3, :3] = pose_0[:3, :3], pose_1[:3, :3]
-        pose_0, pose_1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
-        rot_0 = pose_0[:3, :3]
-        rot_1 = pose_1[:3, :3]
-        rots = Rot.from_matrix(np.stack([rot_0, rot_1]))
-        key_times = [0, 1]
-        slerp = Slerp(key_times, rots)
+
+        RT0, RT1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
+        T = RT0[:3, 3]*(1.0 - ratio) + RT1[:3, 3]*ratio
+
+        rots = Rot.from_matrix(np.stack([RT0[:3,:3], RT1[:3,:3]]))
+        slerp = Slerp([0, 1], rots)
         rot = slerp(ratio)
-        pose = np.diag([1.0, 1.0, 1.0, 1.0])
-        pose = pose.astype(np.float32)
-        pose[:3, :3] = rot.as_matrix()
-        pose[:3, 3] = ((1.0 - ratio) * pose_0 + ratio * pose_1)[:3, 3]
-        pose = np.linalg.inv(pose)
-        rot = torch.from_numpy(pose[:3, :3])
-        trans = torch.from_numpy(pose[:3, 3])
-        rays_v = torch.matmul(rot[None, None, :3, :3], rays_v[:, :, :, None]).squeeze()  # W, H, 3
-        rays_o = trans[None, None, :3].expand(rays_v.shape)  # W, H, 3
-        rays_o, rays_v = rays_o.transpose(0, 1), rays_v.transpose(0, 1)
+
+        RT = np.diag([1.0, 1.0, 1.0, 1.0])
+        RT[:3, :3] = rot.as_matrix()
+        RT[:3, 3] = T
+        c2w = np.linalg.inv(RT)
+        c2w = torch.from_numpy(c2w).float()[:3, :4]
+
+        directions = self.directions[0].view(-1, 3)
+        rays_o, rays_d = get_rays(directions, c2w[None].expand(directions.shape[0], -1, -1)[:,:3,:4])
         rays_time = torch.full_like(rays_o[..., :1], fill_value=time_step)
-        data = torch.cat((rays_o, rays_v, rays_time), dim=-1)
-        return data
+        rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
+        return rays
+
+    # def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, resolution_level=1, time_step=0):
+    #     """
+    #     Interpolate pose between two cameras.
+    #     """
+    #     l = resolution_level
+    #     tx = torch.linspace(0, self.w - 1, self.w // l)
+    #     ty = torch.linspace(0, self.h - 1, self.h // l)
+    #     pixels_x, pixels_y = torch.meshgrid(tx, ty)
+    #     p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=-1)  # W, H, 3
+    #     p = torch.matmul(self.intrinsics_inv[None, None, :3, :3], p[:, :, :, None]).squeeze()  # W, H, 3
+    #     rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)  # W, H, 3
+    #     # trans = pose_0[:3, 3]*(1.0 - ratio) + pose_1[:3, 3]*ratio
+    #     _pose_0, _pose_1 = np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 1.0, 1.0, 1.0])
+    #     _pose_0[:3, :3], _pose_1[:3, :3] = pose_0[:3, :3], pose_1[:3, :3]
+    #     pose_0, pose_1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
+    #     rot_0 = pose_0[:3, :3]
+    #     rot_1 = pose_1[:3, :3]
+    #     rots = Rot.from_matrix(np.stack([rot_0, rot_1]))
+    #     key_times = [0, 1]
+    #     slerp = Slerp(key_times, rots)
+    #     rot = slerp(ratio)
+    #     pose = np.diag([1.0, 1.0, 1.0, 1.0])
+    #     pose = pose.astype(np.float32)
+    #     pose[:3, :3] = rot.as_matrix()
+    #     pose[:3, 3] = ((1.0 - ratio) * pose_0 + ratio * pose_1)[:3, 3]
+    #     pose = np.linalg.inv(pose)
+    #     rot = torch.from_numpy(pose[:3, :3])
+    #     trans = torch.from_numpy(pose[:3, 3])
+    #     rays_v = torch.matmul(rot[None, None, :3, :3], rays_v[:, :, :, None]).squeeze()  # W, H, 3
+    #     rays_o = trans[None, None, :3].expand(rays_v.shape)  # W, H, 3
+    #     rays_o, rays_v = rays_o.transpose(0, 1), rays_v.transpose(0, 1)
+    #     rays_time = torch.full_like(rays_o[..., :1], fill_value=time_step)
+    #     data = torch.cat((rays_o, rays_v, rays_time), dim=-1)
+    #     return data
 
     def __len__(self):
         return len(self.rays_list)
