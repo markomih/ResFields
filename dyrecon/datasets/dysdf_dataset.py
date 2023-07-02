@@ -8,6 +8,8 @@ import cv2 as cv
 import numpy as np
 import pytorch_lightning as pl
 import torch.nn.functional as F
+from scipy.spatial.transform import Rotation as Rot
+from scipy.spatial.transform import Slerp
 
 # from torch.utils.data import Dataset, DataLoader, IterableDataset
 
@@ -74,7 +76,7 @@ class DySDFDatasetBase():
         def _sample(data_list: list):
             ret = data_list #if data_ids == -1 else [data_list[i] for i in data_ids]
             return ret[:load_time_steps]
-        
+        self.camera_dict = {}
         _all_c2w, _all_images, _all_fg_masks, _frame_ids, _directions = [], [], [], [], []
         for cam_dir in camera_list:
             data_dir = os.path.join(config.data_root, cam_dir)
@@ -107,11 +109,13 @@ class DySDFDatasetBase():
             self.h, self.w = images.shape[1], images.shape[2]
             directions = get_ray_directions(self.h, self.w, intrinsics_all[0]) # (h, w, 3)
             directions = directions.unsqueeze(0).repeat(all_images.shape[0], 1, 1, 1) # [n_images, h, w, 3]
+            self.intrinsics_inv = torch.inverse(intrinsics_all[0].float())
             
             _all_c2w.append(all_c2w)
             _all_images.append(all_images)
             _frame_ids.append(frame_ids)
             _directions.append(directions)
+            self.camera_dict[cam_dir] = all_c2w[0]
 
         if self.split != 'train' and os.path.exists(os.path.join(config.data_root, 'cloud')):
             coud_dir = os.path.join(config.data_root, 'cloud')
@@ -215,6 +219,70 @@ class DySDFDataset(torch.utils.data.Dataset, DySDFDatasetBase):
             batch['cloud'] = self.clouds[index]
         return batch
 
+class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
+    def __init__(self, config, camera_list, split, load_time_steps=100000):
+        self.setup(config, camera_list, split, load_time_steps)
+        cam_1 = config.predict.cam_1
+        cam_2 = config.predict.cam_2
+        n_imgs = config.predict.n_imgs
+        self.rays_list, self._frame_list = self.interpolate_cameras(cam_1, cam_2, n_imgs)
+
+    def interpolate_cameras(self, cam_1, cam_2, n_imgs):
+        pose_1 = self.camera_dict[cam_1]
+        pose_2 = self.camera_dict[cam_2]
+        frame_list = torch.cat((self.frame_ids, torch.flip(self.frame_ids, [0])[1:])).view(1, -1).repeat(100, 1).view(-1)[:n_imgs]
+        rays_list = []
+        for i in range(n_imgs):
+            ratio = np.sin(((i / n_imgs) - 0.5) * np.pi) * 0.5 + 0.5
+            rays_time = self.frame_id_to_time(torch.tensor(frame_list[i]))
+            rays_list.append(self.gen_rays_between(pose_1, pose_2, ratio, time_step=rays_time))
+        return rays_list, frame_list
+
+    def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, resolution_level=1, time_step=0):
+        """
+        Interpolate pose between two cameras.
+        """
+        l = resolution_level
+        tx = torch.linspace(0, self.w - 1, self.w // l)
+        ty = torch.linspace(0, self.h - 1, self.h // l)
+        pixels_x, pixels_y = torch.meshgrid(tx, ty)
+        p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=-1)  # W, H, 3
+        p = torch.matmul(self.intrinsics_inv[None, None, :3, :3], p[:, :, :, None]).squeeze()  # W, H, 3
+        rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)  # W, H, 3
+        trans = pose_0[:3, 3]*(1.0 - ratio) + pose_1[:3, 3]*ratio
+        _pose_0, _pose_1 = np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 1.0, 1.0, 1.0])
+        _pose_0[:3, :3], _pose_1[:3, :3] = pose_0[:3, :3], pose_1[:3, :3]
+        pose_0, pose_1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
+        rot_0 = pose_0[:3, :3]
+        rot_1 = pose_1[:3, :3]
+        rots = Rot.from_matrix(np.stack([rot_0, rot_1]))
+        key_times = [0, 1]
+        slerp = Slerp(key_times, rots)
+        rot = slerp(ratio)
+        pose = np.diag([1.0, 1.0, 1.0, 1.0])
+        pose = pose.astype(np.float32)
+        pose[:3, :3] = rot.as_matrix()
+        pose[:3, 3] = ((1.0 - ratio) * pose_0 + ratio * pose_1)[:3, 3]
+        pose = np.linalg.inv(pose)
+        rot = torch.from_numpy(pose[:3, :3])
+        trans = torch.from_numpy(pose[:3, 3])
+        rays_v = torch.matmul(rot[None, None, :3, :3], rays_v[:, :, :, None]).squeeze()  # W, H, 3
+        rays_o = trans[None, None, :3].expand(rays_v.shape)  # W, H, 3
+        rays_o, rays_v = rays_o.transpose(0, 1), rays_v.transpose(0, 1)
+        rays_time = torch.full_like(rays_o[..., :1], fill_value=time_step)
+        data = torch.cat((rays_o, rays_v, rays_time), dim=-1)
+        return data
+
+    def __len__(self):
+        return len(self.rays_list)
+    
+    def __getitem__(self, index):
+        batch = {
+            'rays': self.rays_list[index].view(-1, self.rays_list[index].shape[-1]),
+            'index': index,
+            'frame_id': self._frame_list[index],
+        }
+        return batch
 
 class DySDFIterableDataset(torch.utils.data.IterableDataset, DySDFDatasetBase):
     def __init__(self, config, camera_list, split, load_time_steps=100000):
@@ -259,8 +327,8 @@ class DySDFDataModule(pl.LightningDataModule):
             self.val_dataset = DySDFDataset(self.config, self.config.val_split, 'test', self.config.get('val_load_time_steps', load_time_steps))
         if stage in [None, 'test']:
             self.test_dataset = DySDFDataset(self.config, self.config.test_split, 'test', self.config.get('test_load_time_steps', load_time_steps))
-        # if stage in [None, 'predict']:
-        #     self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split)
+        if stage in [None, 'predict']:
+            self.predict_dataset = DySDFPredictDataset(self.config, self.config.train_split, 'train', load_time_steps)
 
     @staticmethod
     def get_metadata(config):

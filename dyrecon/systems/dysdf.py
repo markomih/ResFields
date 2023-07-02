@@ -212,3 +212,31 @@ class DySDFSystem(BaseSystem):
             for _level in self.levels:
                 idir = f"it{self.global_step:06d}-{prefix}_{_level}"
                 self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=15)
+
+    def predict_step(self, batch, batch_idx):
+        out = self(batch) #rays (N, 7), rgb (N,3), depth (N,1)
+        W, H = self.dataset.w, self.dataset.h
+        prefix = 'predict'
+
+        self.levels = out.keys()
+        for _level in self.levels:
+            _log_imgs = [
+                {'type': 'rgb', 'img': out[_level]['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
+            ]
+            if 'normal' in out[_level]:
+                normal = (0.5 + 0.5*out[_level]['normal'].view(H, W, 3))*out[_level]['opacity'].view(H, W, 1)
+                normal = normal + self.model.background_color.view(1, 1, 3).expand(normal.shape)*(1.0 - out[_level]['opacity'].view(H, W, 1))
+                _log_imgs.append(
+                    {'type': 'rgb', 'img': normal, 'kwargs': {'data_format': 'HWC'}},
+                )
+            file_name = f"{batch['index'].squeeze().item():06d}"
+            img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}_{_level}/{file_name}.png", _log_imgs)
+        return torch.tensor(0.).to(self.device)
+    
+    def on_predict_epoch_end(self, *args, **kwargs):
+        out = self.all_gather(self.predict_step_outputs)
+        if self.trainer.is_global_zero:
+            prefix = 'predict'
+            for _level in self.levels:
+                idir = f"it{self.global_step:06d}-{prefix}_{_level}"
+                self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=15)

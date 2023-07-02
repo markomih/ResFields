@@ -21,6 +21,10 @@ dataset:
   data_root: ../datasets/public_data/${dataset.scene}
   sampling: ${model.sampling}
 
+  predict:
+    cam_1: cam_train_3
+    cam_2: cam_train_8
+    n_imgs: ${dataset.load_time_steps}
 
 model:
   name: DySDF
