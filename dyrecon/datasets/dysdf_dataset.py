@@ -77,7 +77,7 @@ class DySDFDatasetBase():
             ret = data_list #if data_ids == -1 else [data_list[i] for i in data_ids]
             return ret[:load_time_steps]
         self.camera_dict = {}
-        _all_c2w, _all_images, _all_fg_masks, _frame_ids, _directions = [], [], [], [], []
+        _all_c2w, _all_images, _all_depths, _all_fg_masks, _frame_ids, _directions = [], [], [], [], [], []
         for cam_dir in camera_list:
             data_dir = os.path.join(config.data_root, cam_dir)
             if not os.path.exists(data_dir):
@@ -102,6 +102,21 @@ class DySDFDatasetBase():
                 all_fg_masks = (masks > 0)[..., 0].float()
                 all_images = all_images*all_fg_masks[..., None].float()
                 _all_fg_masks.append(all_fg_masks)
+
+            depth_lis = _sample(sorted(glob(os.path.join(data_dir, 'depth/*.png'))))
+            self.has_depth = len(depth_lis) > 0
+            if self.has_depth:
+                depth_scale = config.get('depth_scale', 1000.)
+                depths_np = np.stack([cv.imread(im_name, cv.IMREAD_UNCHANGED) for im_name in depth_lis]) / depth_scale
+                depths_np = depths_np*(1./scale_mats_np[0][0, 0])
+                depths_np[depths_np == 0] = -1. # avoid nan values
+                depths = torch.from_numpy(depths_np.astype(np.float32)).float()
+                if self.has_masks:
+                    depths[~(all_fg_masks > 0)] = -1
+
+                _all_depths.append(torch.from_numpy(depths_np.astype(np.float32)).float())
+                # depths_np[depths_np > 3.] = -1.
+                # self.depths = torch.from_numpy(depths_np.astype(np.float32)).float().cuda()
 
             self.h, self.w = all_images.shape[1:-1]
             frame_ids = torch.tensor(list(range(all_images.shape[0]))).long()
@@ -139,6 +154,8 @@ class DySDFDatasetBase():
             yx_fg_mask = (self.all_fg_masks > 0.0).any(dim=0) # H, W
             self.yx_fg_inds = torch.stack(torch.where(yx_fg_mask), -1) # n_fg_pixels, 2
             self.yx_bg_inds = torch.stack(torch.where(~yx_fg_mask), -1) # n_bg_pixels, 2
+        if self.has_depth:
+            self.depths = torch.cat(_all_depths, dim=0).to(self.device)
         print('Load data: End', 'Shapes:', self.all_c2w.shape, self.all_images.shape, self.frame_ids.shape, self.directions.shape)
 
     def frame_id_to_time(self, frame_id):
@@ -183,15 +200,15 @@ class DySDFDatasetBase():
             c2w = self.all_c2w[index]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.all_images[index, y, x].view(-1, self.all_images.shape[-1])
-            if self.has_masks:
-                to_ret['mask'] = self.all_fg_masks[index, y, x].view(-1) # n_rays
         else:
             c2w = self.all_c2w[index].squeeze(0)
             directions = self.directions[index].squeeze(0) #(H,W,3)
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.all_images[index].view(-1, self.all_images.shape[-1])
-            if self.has_masks:
-                to_ret['mask'] = self.all_fg_masks[index, y, x].view(-1) # n_rays
+        if self.has_masks:
+            to_ret['mask'] = self.all_fg_masks[index, y, x].view(-1) # n_rays
+        if self.has_depth:
+            to_ret['depth'] = self.depths[index, y, x].view(-1) # n_rays
         frame_id = self.frame_ids[index]
         rays_time = self.frame_id_to_time(frame_id).view(-1, 1)
         if rays_time.shape[0] != rays_o.shape[0]:
@@ -261,41 +278,6 @@ class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
         rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1), rays_time], dim=-1)
         return rays
 
-    # def gen_rays_between(self, pose_0: np.ndarray, pose_1: np.ndarray, ratio:float, resolution_level=1, time_step=0):
-    #     """
-    #     Interpolate pose between two cameras.
-    #     """
-    #     l = resolution_level
-    #     tx = torch.linspace(0, self.w - 1, self.w // l)
-    #     ty = torch.linspace(0, self.h - 1, self.h // l)
-    #     pixels_x, pixels_y = torch.meshgrid(tx, ty)
-    #     p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=-1)  # W, H, 3
-    #     p = torch.matmul(self.intrinsics_inv[None, None, :3, :3], p[:, :, :, None]).squeeze()  # W, H, 3
-    #     rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)  # W, H, 3
-    #     # trans = pose_0[:3, 3]*(1.0 - ratio) + pose_1[:3, 3]*ratio
-    #     _pose_0, _pose_1 = np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 1.0, 1.0, 1.0])
-    #     _pose_0[:3, :3], _pose_1[:3, :3] = pose_0[:3, :3], pose_1[:3, :3]
-    #     pose_0, pose_1 = np.linalg.inv(_pose_0), np.linalg.inv(_pose_1)
-    #     rot_0 = pose_0[:3, :3]
-    #     rot_1 = pose_1[:3, :3]
-    #     rots = Rot.from_matrix(np.stack([rot_0, rot_1]))
-    #     key_times = [0, 1]
-    #     slerp = Slerp(key_times, rots)
-    #     rot = slerp(ratio)
-    #     pose = np.diag([1.0, 1.0, 1.0, 1.0])
-    #     pose = pose.astype(np.float32)
-    #     pose[:3, :3] = rot.as_matrix()
-    #     pose[:3, 3] = ((1.0 - ratio) * pose_0 + ratio * pose_1)[:3, 3]
-    #     pose = np.linalg.inv(pose)
-    #     rot = torch.from_numpy(pose[:3, :3])
-    #     trans = torch.from_numpy(pose[:3, 3])
-    #     rays_v = torch.matmul(rot[None, None, :3, :3], rays_v[:, :, :, None]).squeeze()  # W, H, 3
-    #     rays_o = trans[None, None, :3].expand(rays_v.shape)  # W, H, 3
-    #     rays_o, rays_v = rays_o.transpose(0, 1), rays_v.transpose(0, 1)
-    #     rays_time = torch.full_like(rays_o[..., :1], fill_value=time_step)
-    #     data = torch.cat((rays_o, rays_v, rays_time), dim=-1)
-    #     return data
-
     def __len__(self):
         return len(self.rays_list)
     
@@ -315,26 +297,6 @@ class DySDFIterableDataset(torch.utils.data.IterableDataset, DySDFDatasetBase):
         while True:
             batch = self.sample_data(None)
             yield batch
-
-# class DySDFPredictDataset(torch.utils.data.Dataset, DySDFDatasetBase):
-#     def __init__(self, config, split):
-#         self.setup(config, split)
-
-#     def setup(self, config, split):
-#         super().setup(config, split)
-#         # create new cameras
-#         cams = self.get_360cams(self.w, self.h)
-
-#         # self.device = _get_rank()
-#         self.all_c2w = torch.stack([c['c2ws'] for c in cams]).float().to(self.device)[:, :3, :4]
-
-#     def __len__(self):
-#         return self.all_c2w.shape[0]
-    
-#     def __getitem__(self, index):
-#         return {
-#             'index': index
-#         }
 
 @datasets.register('dysdf_dataset')
 class DySDFDataModule(pl.LightningDataModule):

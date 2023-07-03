@@ -69,6 +69,15 @@ class DySDFSystem(BaseSystem):
             stats['loss_mask'] = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze())
             loss += loss_weight.mask*stats['loss_mask']
 
+        if 'depth' in batch and loss_weight.get('depth', 0.0) > 0.0:
+            gt_depth = batch['depth'].squeeze()
+            rnd_depth = out['depth'].squeeze()
+            dmask = (gt_depth > 0.0) & (rnd_depth > 0.0)
+            if mask is not None:
+                dmask = dmask & (mask > 0).squeeze()
+            stats['loss_depth'] = masked_mean((rnd_depth - gt_depth).abs(), dmask.float())
+            loss += loss_weight.depth*stats['loss_depth']
+
         if 'gradient_error' in out and loss_weight.get('eikonal', 0.0) > 0.0:
             stats["loss_eikonal"] = out["gradient_error"]
             loss += loss_weight.eikonal * stats["loss_eikonal"]

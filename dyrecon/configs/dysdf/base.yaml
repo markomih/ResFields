@@ -91,6 +91,7 @@ system:
     mask: 0.1
     eikonal: 0.1
     dist: 0.0
+    depth: 0.0
   optimizer:
     name: Adam
     args:
