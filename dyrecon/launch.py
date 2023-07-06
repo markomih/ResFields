@@ -92,13 +92,13 @@ def main():
             _logger = pl.loggers.TensorBoardLogger(config.exp_dir, name='runs')
         loggers.append(_logger)
     
-    strategy='ddp' if n_gpus > 1 else None
+    if n_gpus > 1:
+        config.trainer.strategy = 'ddp'
     trainer = pl.Trainer(
         devices=n_gpus,
         accelerator='gpu',
         callbacks=callbacks,
         logger=loggers,
-        strategy=strategy,
         # strategy='ddp',  # TIP: disable ddp for easier debugging with pdb
         # strategy='ddp_find_unused_parameters_false',  # TIP: disable ddp for easier debugging with pdb
         # strategy='find_unused_parameters=True',  # TIP: disable ddp for easier debugging with pdb

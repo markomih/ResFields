@@ -31,19 +31,27 @@ class Linear(torch.nn.Linear):
     """
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True,
-                 device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm') -> None:
+                 device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm', fuse_mode='add') -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
         assert mode in ['lookup', 'interpolation', 'cp']
         assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet']
+        assert fuse_mode in ['add', 'mul']
         self.rank = rank
+        self.fuse_mode = fuse_mode
         self.capacity = capacity
         self.compression = compression
         self.mode = mode
+        self.fuse_op = torch.add if fuse_mode == 'add' else torch.mul
 
         if self.rank is not None and self.capacity is not None and self.capacity > 0:
             if self.compression == 'vm':
-                self.register_parameter('weights_t', torch.nn.Parameter(0.01*torch.randn((self.capacity, self.rank)))) # C, R
-                self.register_parameter('matrix_t', torch.nn.Parameter(0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])))) # R, F_out*F_in
+                weights_t = 0.01*torch.randn((self.capacity, self.rank)) # C, R
+                matrix_t = 0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
+                if self.fuse_mode == 'mul': # so that it starts with identity
+                    matrix_t.fill_(1.0)
+                    weights_t.fill_(1.0/self.rank)
+                self.register_parameter('weights_t', torch.nn.Parameter(weights_t)) # C, R
+                self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'none':
                 self.register_parameter('matrix_t', torch.nn.Parameter(0.0*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
             elif self.compression == 'resnet':
@@ -73,19 +81,19 @@ class Linear(torch.nn.Linear):
         """
         # return self.weight + torch.einsum('tr,rfi->tfi', self.weights_t, self.matrix_t)
         if self.compression == 'vm':
-            delta_w = (self.weights_t @ self.matrix_t).t() + self.weight.view(-1, 1) # F_out*F_in, C
+            delta_w = self.fuse_op((self.weights_t @ self.matrix_t).t(), self.weight.view(-1, 1)) # F_out*F_in, C
         elif self.compression == 'none':
-            delta_w = self.matrix_t.t() + self.weight.view(-1, 1) # F_out*F_in, C
+            delta_w = self.fuse_op(self.matrix_t.t(), self.weight.view(-1, 1)) # F_out*F_in, C
         elif self.compression == 'cp':
             _weights = getattr(self, f'lin_w')
             _factors = [getattr(self, f'lin_f1'), getattr(self, f'lin_f2'), getattr(self, f'lin_f3')]
             lin_w = tl.cp_to_tensor((_weights, _factors)) # C, F_out, F_in
-            delta_w = lin_w.view(lin_w.shape[0], -1).t() + self.weight.view(-1, 1) # F_out*F_in, C
+            delta_w = self.fuse_op(lin_w.view(lin_w.shape[0], -1).t(), self.weight.view(-1, 1)) # F_out*F_in, C
         elif self.compression == 'tucker':
             core = getattr(self, f'core')
             factors = getattr(self, f'factors')
             lin_w = tl.tucker_to_tensor((core, factors)) # C, F_out, F_in
-            delta_w = lin_w.reshape(lin_w.shape[0], -1).t() + self.weight.view(-1, 1) # F_out*F_in, C
+            delta_w = self.fuse_op(lin_w.reshape(lin_w.shape[0], -1).t(), self.weight.view(-1, 1)) # F_out*F_in, C
         else:
             raise NotImplementedError
 

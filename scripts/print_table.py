@@ -27,26 +27,46 @@ def main():
     keys = ['metric_CD', 'coarse_metric_ssim', 'coarse_metric_psnr']
     keys_str = ['CD', 'SSIM', 'PSNR']
     mean_dict = collections.defaultdict(list)
+    DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf'
+    DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k_nerf/dysdf'
     for dataset in ['mv_basketball_neurips2023_10', 'model', 'dancer_vox11', 'exercise_vox11']:
-        file_name = 'results_it400000-test.yaml'
+        file_name = os.path.join('save', 'results_it400000-test.yaml')
         exp_dir = [
-            ('TNeRF', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/tnerf/save/{file_name}'),
-            ('TNeRF + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/tnerfResFields1/save/{file_name}'),
+            ('TNeRF', os.path.join(DIR_NAME, dataset, 'tnerf', file_name)),
+            ('TNeRF + ResFields1', os.path.join(DIR_NAME, dataset, 'tnerfResFields1', file_name)),
+            # ('TNeRF + ResFields12', os.path.join(DIR_NAME, dataset, 'tnerfResFields12', file_name)),
+            ('TNeRF + ResFields123', os.path.join(DIR_NAME, dataset, 'tnerfResFields123', file_name)),
+            ('TNeRF + ResFields1234567', os.path.join(DIR_NAME, dataset, 'tnerfResFields1234567', file_name)),
 
-            ('DyNeRF', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/dynerf/save/{file_name}'),
-            ('DyNeRF + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/dynerfResFields1/save/{file_name}'),
+            ('DyNeRF', os.path.join(DIR_NAME, dataset, 'dynerf', file_name)),
+            ('DyNeRF + ResFields1', os.path.join(DIR_NAME, dataset, 'dynerfResFields1', file_name)),
+            # ('DyNeRF + ResFields12', os.path.join(DIR_NAME, dataset, 'dynerfResFields12', file_name)),
+            ('DyNeRF + ResFields123', os.path.join(DIR_NAME, dataset, 'dynerfResFields123', file_name)),
+            ('DyNeRF + ResFields1234567', os.path.join(DIR_NAME, dataset, 'dynerfResFields1234567', file_name)),
 
-            ('DNeRF', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/dnerf/save/{file_name}'),
-            ('DNeRF + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/dnerfResFields1/save/{file_name}'),
+            ('DNeRF', os.path.join(DIR_NAME, dataset, 'dnerf', file_name)),
+            ('DNeRF + ResFields1', os.path.join(DIR_NAME, dataset, 'dnerfResFields1', file_name)),
+            # ('DNeRF + ResFields12', os.path.join(DIR_NAME, dataset, 'dnerfResFields12', file_name)),
+            ('DNeRF + ResFields123', os.path.join(DIR_NAME, dataset, 'dnerfResFields123', file_name)),
+            ('DNeRF + ResFields1234567', os.path.join(DIR_NAME, dataset, 'dnerfResFields1234567', file_name)),
 
-            ('Nerfies', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/nerfies/save/{file_name}'),
-            ('Nerfies + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/nerfiesResFields1/save/{file_name}'),
+            ('Nerfies', os.path.join(DIR_NAME, dataset, 'nerfies', file_name)),
+            ('Nerfies + ResFields1', os.path.join(DIR_NAME, dataset, 'nerfiesResFields1', file_name)),
+            # ('Nerfies + ResFields12', os.path.join(DIR_NAME, dataset, 'nerfiesResFields12', file_name)),
+            ('Nerfies + ResFields123', os.path.join(DIR_NAME, dataset, 'nerfiesResFields123', file_name)),
+            ('Nerfies + ResFields1234567', os.path.join(DIR_NAME, dataset, 'nerfiesResFields1234567', file_name)),
 
-            ('HyperNeRF', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/hypernerf/save/{file_name}'),
-            ('HyperNeRF + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/hypernerfResFields1/save/{file_name}'),
+            ('HyperNeRF', os.path.join(DIR_NAME, dataset, 'hypernerf', file_name)),
+            ('HyperNeRF + ResFields1', os.path.join(DIR_NAME, dataset, 'hypernerfResFields1', file_name)),
+            # ('HyperNeRF + ResFields12', os.path.join(DIR_NAME, dataset, 'hypernerfResFields12', file_name)),
+            ('HyperNeRF + ResFields123', os.path.join(DIR_NAME, dataset, 'hypernerfResFields123', file_name)),
+            ('HyperNeRF + ResFields1234567', os.path.join(DIR_NAME, dataset, 'hypernerfResFields1234567', file_name)),
 
-            ('NDR', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/ndr/save/{file_name}'),
-            ('NDR + ResFields', f'/home/marko/remote_euler/projects/ResFields/exp_owlii_benchmarking400k/dysdf/{dataset}/ndrResFields1/save/{file_name}'),
+            ('NDR', os.path.join(DIR_NAME, dataset, 'ndr', file_name)),
+            ('NDR + ResFields1', os.path.join(DIR_NAME, dataset, 'ndrResFields1', file_name)),
+            # ('NDR + ResFields12', os.path.join(DIR_NAME, dataset, 'ndrResFields12', file_name)),
+            ('NDR + ResFields123', os.path.join(DIR_NAME, dataset, 'ndrResFields123', file_name)),
+            ('NDR + ResFields1234567', os.path.join(DIR_NAME, dataset, 'ndrResFields1234567', file_name)),
         ]
 
         table, exp_names = [], []
