@@ -35,13 +35,17 @@ class Linear(torch.nn.Linear):
         super().__init__(in_features, out_features, bias, device, dtype)
         assert mode in ['lookup', 'interpolation', 'cp']
         assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet']
-        assert fuse_mode in ['add', 'mul']
+        assert fuse_mode in ['add', 'mul', 'none']
         self.rank = rank
         self.fuse_mode = fuse_mode
         self.capacity = capacity
         self.compression = compression
         self.mode = mode
-        self.fuse_op = torch.add if fuse_mode == 'add' else torch.mul
+        self.fuse_op = {
+            'add': torch.add,
+            'mul': torch.mul,
+            'none': lambda x, y: x
+        }[self.fuse_mode]
 
         if self.rank is not None and self.capacity is not None and self.capacity > 0:
             if self.compression == 'vm':
