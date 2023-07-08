@@ -57,7 +57,7 @@ class Linear(torch.nn.Linear):
                 self.register_parameter('weights_t', torch.nn.Parameter(weights_t)) # C, R
                 self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'vm_attention':
-                attention_weight = 0.01*torch.randn((self.capacity, self.rank)) # C, R
+                attention_weight = torch.ones((self.capacity, self.rank)) # C, R
                 self.register_parameter('attention_weight', torch.nn.Parameter(attention_weight)) # C, R
                 weights_t = 0.01*torch.randn((self.capacity, self.rank)) # C, R
                 matrix_t = 0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
