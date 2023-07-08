@@ -57,7 +57,7 @@ class Linear(torch.nn.Linear):
                 self.register_parameter('weights_t', torch.nn.Parameter(weights_t)) # C, R
                 self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'vm_noweight':
-                matrix_t = 0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
+                matrix_t = 0.000001*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
                 self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'none':
                 self.register_parameter('matrix_t', torch.nn.Parameter(0.0*torch.randn((self.capacity, self.weight.shape[0]*self.weight.shape[1])))) # C, F_out*F_in
