@@ -100,7 +100,7 @@ class Linear(torch.nn.Linear):
         if self.compression == 'vm':
             delta_w = self.fuse_op((self.weights_t @ self.matrix_t).t(), self.weight.view(-1, 1)) # F_out*F_in, C
         elif self.compression == 'vm_attention':
-            attention = torch.softmax(self.attention_weight @ self.attention_weight.t(), dim=0) # C,R @ R,C -> C,C
+            attention = torch.softmax(self.attention_weight @ self.attention_weight.t()/self.rank, dim=0) # C,R @ R,C -> C,C
             weights = attention @ self.weights_t # C,C @ C,R -> C,R
             delta_w = self.fuse_op((weights @ self.matrix_t).t(), self.weight.view(-1, 1))
         elif self.compression == 'vm_noweight':
