@@ -452,6 +452,52 @@ class SirenMLP(BaseModel):
         x = self.net[-1](x, frame_id=frame_id, input_time=input_time)
         return x
 
+
+@models.register('relu_mlp')
+class ReluMLP(BaseModel):
+    def setup(self):
+        in_features = self.config.in_features
+        out_features = self.config.out_features
+        hidden_features = self.config.hidden_features
+        num_hidden_layers = self.config.num_hidden_layers
+        # resfield parameters
+        composition_rank = self.config.composition_rank
+        independent_layers = self.config.independent_layers
+        capacity = self.config.capacity
+        mode = self.config.get('mode', 'lookup')
+        fuse_mode = self.config.get('fuse_mode', 'add')
+        compression = self.config.compression
+
+        dims = [in_features] + [hidden_features for _ in range(num_hidden_layers)] + [out_features]
+        self.nl = torch.nn.ReLU()
+        self.net = []
+        for i in range(len(dims) - 1):
+            _rank = composition_rank if i in independent_layers else 0
+            _capacity = capacity if i in independent_layers else 0
+
+            lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode, compression=compression, fuse_mode=fuse_mode)
+            lin.apply(self.init_weights_normal)
+            self.net.append(lin)
+        self.net = torch.nn.ModuleList(self.net)
+
+    @staticmethod
+    @torch.no_grad()
+    def init_weights_normal(m):
+        if hasattr(m, 'weight'):
+            nn.init.kaiming_normal_(m.weight, a=0.0, nonlinearity='relu', mode='fan_in')
+    
+    def forward(self, coords, frame_id=None, input_time=None):
+        x = coords
+        for lin in self.net[:-1]:
+            x = self.nl(lin(x, frame_id=frame_id, input_time=input_time))
+            if lin.compression == 'resnet' and lin.capacity > 0:
+                if frame_id.numel() == 1:
+                    x = x + lin.resnet_vec[frame_id].view(1, 1, lin.resnet_vec.shape[-1])
+                else:
+                    x = x + lin.resnet_vec[:, None] # T, S, F_out
+        x = self.net[-1](x, frame_id=frame_id, input_time=input_time)
+        return x
+
         
 class Sine(nn.Module):
     def forward(self, input):
