@@ -173,6 +173,9 @@ class DySDFDatasetBase():
             _bg_inds = self.bg_inds[torch.randint(0, self.bg_inds.shape[0], size=(bg_rays,), device=self.device)] # B,3\
             _inds = torch.cat((_fg_inds, _bg_inds), 0)
             index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
+        elif self.sampling.strategy == 'fg_mask':
+            _inds = self.fg_inds[torch.randint(0, self.fg_inds.shape[0], size=(train_num_rays,), device=self.device)] # B,3
+            index, y, x = _inds[:, 0], _inds[:, 1], _inds[:, 2]
         elif self.sampling.strategy == 'time_balanced':
             n_cameras = self.all_images.shape[0]
             assert train_num_rays % n_cameras == 0, 'train_num_rays should be divisible by the number of cameras and frames'
