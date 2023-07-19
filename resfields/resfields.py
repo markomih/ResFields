@@ -31,7 +31,7 @@ class Linear(torch.nn.Linear):
     """
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True,
-                 device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm', fuse_mode='add') -> None:
+                 device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm', fuse_mode='add', coeff_ratio=1.0) -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
         assert mode in ['lookup', 'interpolation', 'cp']
         assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet', 'vm_noweight', 'vm_attention']
@@ -48,8 +48,9 @@ class Linear(torch.nn.Linear):
         }[self.fuse_mode]
 
         if self.rank is not None and self.capacity is not None and self.capacity > 0:
+            n_coefs = int(self.capacity*coeff_ratio)
             if self.compression == 'vm':
-                weights_t = 0.01*torch.randn((self.capacity, self.rank)) # C, R
+                weights_t = 0.01*torch.randn((n_coefs, self.rank)) # C, R
                 matrix_t = 0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
                 if self.fuse_mode == 'mul': # so that it starts with identity
                     matrix_t.fill_(1.0)
@@ -57,9 +58,9 @@ class Linear(torch.nn.Linear):
                 self.register_parameter('weights_t', torch.nn.Parameter(weights_t)) # C, R
                 self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'vm_attention':
-                attention_weight = torch.ones((self.capacity, self.rank)) # C, R
+                attention_weight = torch.ones((n_coefs, self.rank)) # C, R
                 self.register_parameter('attention_weight', torch.nn.Parameter(attention_weight)) # C, R
-                weights_t = 0.01*torch.randn((self.capacity, self.rank)) # C, R
+                weights_t = 0.01*torch.randn((n_coefs, self.rank)) # C, R
                 matrix_t = 0.01*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
                 if self.fuse_mode == 'mul': # so that it starts with identity
                     matrix_t.fill_(1.0)
@@ -98,7 +99,18 @@ class Linear(torch.nn.Linear):
         """
         # return self.weight + torch.einsum('tr,rfi->tfi', self.weights_t, self.matrix_t)
         if self.compression == 'vm':
-            delta_w = self.fuse_op((self.weights_t @ self.matrix_t).t(), self.weight.view(-1, 1)) # F_out*F_in, C
+            weights_t = self.weights_t # C, R
+            if self.mode == 'interpolation':
+                grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1
+
+                weights_t = torch.nn.functional.grid_sample(
+                    weights_t.transpose(0, 1).unsqueeze(0).unsqueeze(-1), # 1, R, C, 1
+                    torch.cat([torch.zeros_like(grid_query), grid_query], dim=-1), 
+                    padding_mode='border', 
+                    mode='bilinear',
+                    align_corners=True
+                ).squeeze(0).squeeze(-1).transpose(0, 1) # 1, R, N, 1 ->  N, R
+            delta_w = self.fuse_op((weights_t @ self.matrix_t).t(), self.weight.view(-1, 1)) # F_out*F_in, C
         elif self.compression == 'vm_attention':
             attention = torch.softmax(self.attention_weight @ self.attention_weight.t()/self.rank, dim=0) # C,R @ R,C -> C,C
             weights = attention @ self.weights_t # C,C @ C,R -> C,R
@@ -121,21 +133,26 @@ class Linear(torch.nn.Linear):
         else:
             raise NotImplementedError
 
-        if self.mode == 'interpolation':
-            grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1
-
-            out = torch.nn.functional.grid_sample(
-                delta_w.unsqueeze(0).unsqueeze(-1), # 1, F_out*F_in, C, 1
-                torch.cat([torch.zeros_like(grid_query), grid_query], dim=-1), 
-                padding_mode='border', 
-                mode='bilinear',
-                align_corners=True
-            ) # 1, F_out*F_in, N, 1
-            out = out.view(*self.weight.shape, grid_query.shape[1]).permute(2, 0, 1) # F_out, F_in, N
-        elif self.mode == 'lookup':
-            out = delta_w.permute(1, 0).view(-1, *self.weight.shape)[frame_id] # N, F_out, F_in
+        mat = delta_w.permute(1, 0).view(-1, *self.weight.shape)
+        if mat.shape[0] == 1:
+            out = mat[0]
         else:
-            raise NotImplementedError
+            out = mat[frame_id] # N, F_out, F_in
+
+        # if self.mode == 'interpolation':
+        #     grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1
+        #     out = torch.nn.functional.grid_sample(
+        #         delta_w.unsqueeze(0).unsqueeze(-1), # 1, F_out*F_in, C, 1
+        #         torch.cat([torch.zeros_like(grid_query), grid_query], dim=-1), 
+        #         padding_mode='border', 
+        #         mode='bilinear',
+        #         align_corners=True
+        #     ) # 1, F_out*F_in, N, 1
+        #     out = out.view(*self.weight.shape, grid_query.shape[1]).permute(2, 0, 1) # F_out, F_in, N
+        # elif self.mode == 'lookup':
+        #     out = delta_w.permute(1, 0).view(-1, *self.weight.shape)[frame_id] # N, F_out, F_in
+        # else:
+        #     raise NotImplementedError
 
         return out # N, F_out, F_in
 

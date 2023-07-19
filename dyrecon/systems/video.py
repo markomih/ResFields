@@ -24,9 +24,9 @@ class VideoSystem(BaseSystem):
         # return: (T, S, 3))
         # split_size = batch_size // coords.shape[1]
         if not self.model.training: # batchify coords to prevent OOM at inference time
-            pred = torch.cat([self.model(_c, _f) for _c, _f in zip(coords.split(1), frame_ids.split(1))], dim=0)
+            pred = torch.cat([self.model(_c, _f, input_time=_c[:, 0, 0]) for _c, _f in zip(coords.split(1), frame_ids.split(1))], dim=0)
         else:
-            pred = self.model(coords, frame_ids)
+            pred = self.model(coords, frame_ids, input_time=coords[:, 0, 0])
         # pred = torch.cat([self.model(_c, frame_ids) for _c in coords.split(split_size, dim=1)], dim=1)
         return pred
     

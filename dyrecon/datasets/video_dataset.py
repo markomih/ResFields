@@ -22,30 +22,46 @@ class VideoDatasetBase:
         self.split = split
         vid = load_video(config.video_path)
         test_fraction = config.test_fraction
-
+        unseen_strategy = config.get('unseen_strategy', 'random') # unseen_time
         sidelength = vid.shape[:-1] # T x H x W
         self.sidelength = sidelength
         all_mgrid = self._get_mgrid(sidelength, dim=3).view(sidelength[0], -1, 3) # Tx H*W x 3
         all_data = torch.from_numpy(vid).float().view(vid.shape[0], -1, 3) # T x H*W x 3
-        n_val_samples_per_frame = int(test_fraction * all_mgrid.shape[1])
         self.n_frames = all_mgrid.shape[0]
 
-        val_ids = np.stack([np.random.choice(np.arange(all_data.shape[1]), size=n_val_samples_per_frame, replace=False) for _ in range(self.n_frames)])
-        train_ids = np.stack([np.delete(np.arange(all_data.shape[1]), val_ids[_i]) for _i in range(self.n_frames)])
-        
-        t_ind = np.arange(0, self.n_frames)[:, None]
         np.random.seed(42)
-        val_tind, train_tind = t_ind.repeat(val_ids.shape[1], axis=1).flatten(), t_ind.repeat(train_ids.shape[1], axis=1).flatten()
-        val_ids, train_ids = val_ids.reshape(-1), train_ids.reshape(-1)
+        if unseen_strategy == 'random':
+            n_val_samples_per_frame = int(test_fraction * all_mgrid.shape[1])
 
-        print(train_ids[77], train_ids[777], train_ids[7777], val_ids[77], val_ids[777], val_ids[7777])
+            val_ids = np.stack([np.random.choice(np.arange(all_data.shape[1]), size=n_val_samples_per_frame, replace=False) for _ in range(self.n_frames)])
+            train_ids = np.stack([np.delete(np.arange(all_data.shape[1]), val_ids[_i]) for _i in range(self.n_frames)])
+            
+            t_ind = np.arange(0, self.n_frames)[:, None]
+            val_tind, train_tind = t_ind.repeat(val_ids.shape[1], axis=1).flatten(), t_ind.repeat(train_ids.shape[1], axis=1).flatten()
+            val_ids, train_ids = val_ids.reshape(-1), train_ids.reshape(-1)
 
-        # split into train and val
-        train_coords = all_mgrid[train_tind, train_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
-        train_data = all_data[train_tind, train_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+            print(train_ids[77], train_ids[777], train_ids[7777], val_ids[77], val_ids[777], val_ids[7777])
 
-        val_coords = all_mgrid[val_tind, val_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
-        val_data = all_data[val_tind, val_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+            # split into train and val
+            train_coords = all_mgrid[train_tind, train_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+            train_data = all_data[train_tind, train_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+
+            val_coords = all_mgrid[val_tind, val_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+            val_data = all_data[val_tind, val_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+        elif unseen_strategy == 'unseen_time':
+            val_ids = np.random.choice(self.n_frames, size=int(test_fraction * self.n_frames), replace=False)
+            train_frame_ids = np.delete(np.arange(0, self.n_frames), val_ids)
+            n_train_frames, n_val_frames = train_frame_ids.shape[0], val_ids.shape[0]
+
+            # split into train and val
+            train_coords = all_mgrid[train_frame_ids].reshape(n_train_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+            train_data = all_data[train_frame_ids].reshape(n_train_frames, -1, all_data.shape[-1]) # T,-1,3
+
+            val_coords = all_mgrid[val_ids].reshape(n_val_frames, -1, all_mgrid.shape[-1]) # T,-1,3
+            val_data = all_data[val_ids].reshape(n_val_frames, -1, all_data.shape[-1]) # T,-1,3
+        else:
+            raise NotImplementedError
+
 
         all_coords, all_data = all_mgrid, all_data
         if False:
