@@ -34,7 +34,7 @@ class Linear(torch.nn.Linear):
                  device=None, dtype=None, rank=None, capacity=None, mode='lookup', compression='vm', fuse_mode='add', coeff_ratio=1.0) -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
         assert mode in ['lookup', 'interpolation', 'cp']
-        assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet', 'vm_noweight', 'vm_attention']
+        assert compression in ['vm', 'cp', 'none', 'tucker', 'resnet', 'vm_noweight', 'vm_attention', 'loe']
         assert fuse_mode in ['add', 'mul', 'none']
         self.rank = rank
         self.fuse_mode = fuse_mode
@@ -56,6 +56,9 @@ class Linear(torch.nn.Linear):
                     matrix_t.fill_(1.0)
                     weights_t.fill_(1.0/self.rank)
                 self.register_parameter('weights_t', torch.nn.Parameter(weights_t)) # C, R
+                self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
+            elif self.compression == 'loe':
+                matrix_t = 0.0*torch.randn((self.rank, self.weight.shape[0]*self.weight.shape[1])) # R, F_out*F_in
                 self.register_parameter('matrix_t', torch.nn.Parameter(matrix_t)) # R, F_out*F_in
             elif self.compression == 'vm_attention':
                 attention_weight = torch.ones((n_coefs, self.rank)) # C, R
@@ -111,6 +114,15 @@ class Linear(torch.nn.Linear):
                     align_corners=True
                 ).squeeze(0).squeeze(-1).transpose(0, 1) # 1, R, N, 1 ->  N, R
             delta_w = self.fuse_op((weights_t @ self.matrix_t).t(), self.weight.view(-1, 1)) # F_out*F_in, C
+        elif self.compression == 'loe':
+            grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1
+            delta_w = torch.nn.functional.grid_sample(
+                self.matrix_t.transpose(0, 1).unsqueeze(0).unsqueeze(-1), # 1, F_out*F_in, R, 1
+                torch.cat([torch.zeros_like(grid_query), grid_query], dim=-1), 
+                padding_mode='border', 
+                mode='nearest',
+                align_corners=True
+            ).squeeze(0).squeeze(-1) # 1, F_out*F_in, N, 1 ->  F_out*F_in,N 
         elif self.compression == 'vm_attention':
             attention = torch.softmax(self.attention_weight @ self.attention_weight.t()/self.rank, dim=0) # C,R @ R,C -> C,C
             weights = attention @ self.weights_t # C,C @ C,R -> C,R

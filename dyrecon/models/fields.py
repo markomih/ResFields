@@ -419,7 +419,8 @@ class SirenMLP(BaseModel):
         for i in range(len(dims) - 1):
             _rank = composition_rank if i in independent_layers else 0
             _capacity = capacity if i in independent_layers else 0
-
+            if not isinstance(_rank, int):
+                _rank = _rank[i]
             lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode, compression=compression, fuse_mode=fuse_mode, coeff_ratio=coeff_ratio)
             lin.apply(self.first_layer_sine_init if i == 0 else self.sine_init)
             self.net.append(lin)
