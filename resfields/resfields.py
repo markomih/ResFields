@@ -149,7 +149,10 @@ class Linear(torch.nn.Linear):
         if mat.shape[0] == 1:
             out = mat[0]
         else:
-            out = mat[frame_id] # N, F_out, F_in
+            if self.mode == 'interpolation':
+                out = mat
+            else:
+                out = mat[frame_id] # N, F_out, F_in
 
         # if self.mode == 'interpolation':
         #     grid_query = input_time.view(1, -1, 1, 1) # 1, N, 1, 1

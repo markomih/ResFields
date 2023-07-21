@@ -54,7 +54,7 @@ class VideoSystem(BaseSystem):
             self.log('val/test_psnr', test_psnr, prog_bar=True, rank_zero_only=True, sync_dist=True)
             # calculate overfitting loss
             if 'train_coords' in batch:
-                train_pred = self(batch['train_coords'], batch['frame_ids'])
+                train_pred = self(batch['train_coords'], batch['train_frame_ids'])
                 train_psnr = criterions.compute_psnr(train_pred, batch['train_data']).mean()
                 self.log('val/train_psnr', train_psnr, prog_bar=True, rank_zero_only=True, sync_dist=True)
             

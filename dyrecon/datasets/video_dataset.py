@@ -48,6 +48,7 @@ class VideoDatasetBase:
 
             val_coords = all_mgrid[val_tind, val_ids].reshape(self.n_frames, -1, all_mgrid.shape[-1]) # T,-1,3
             val_data = all_data[val_tind, val_ids].reshape(self.n_frames, -1, all_data.shape[-1]) # T,-1,3
+            self.train_frame_ids, self.val_frame_ids = torch.arange(self.n_frames), torch.arange(self.n_frames)
         elif unseen_strategy == 'unseen_time':
             val_ids = np.random.choice(self.n_frames, size=int(test_fraction * self.n_frames), replace=False)
             train_frame_ids = np.delete(np.arange(0, self.n_frames), val_ids)
@@ -59,6 +60,8 @@ class VideoDatasetBase:
 
             val_coords = all_mgrid[val_ids].reshape(n_val_frames, -1, all_mgrid.shape[-1]) # T,-1,3
             val_data = all_data[val_ids].reshape(n_val_frames, -1, all_data.shape[-1]) # T,-1,3
+            self.train_frame_ids = torch.from_numpy(train_frame_ids).long()
+            self.val_frame_ids = torch.from_numpy(val_ids).long()
         else:
             raise NotImplementedError
 
@@ -84,12 +87,15 @@ class VideoDatasetBase:
             self.n_samples = self.sampling.n_samples // all_coords.shape[0]
             self.data = self.train_data
             self.coords = self.train_coords
+            self.frame_ids = self.train_frame_ids
         elif split == 'test':
             self.data = val_data
             self.coords = val_coords
+            self.frame_ids = self.val_frame_ids
         elif split == 'predict':
             self.data = all_data
             self.coords = all_coords
+            self.frame_ids = torch.arange(self.n_frames).long()
 
     @staticmethod
     def _get_mgrid(sidelen, dim=2):
@@ -120,22 +126,23 @@ class VideoDatasetBase:
         batch = dict()
 
         n_frames = coords.shape[0]
-        frame_ids = torch.arange(n_frames, device=coords.device)
+        # frame_ids = torch.arange(n_frames, device=coords.device)
         if self.split in ['train']:
-            t = frame_ids.unsqueeze(-1).repeat(1, self.n_samples).view(-1)
+            t = torch.arange(n_frames, device=coords.device).unsqueeze(-1).repeat(1, self.n_samples).view(-1)
             y = torch.randint(0, coords.shape[1], size=(t.shape[0],), device=coords.device)
             coords = coords[t, y] # (F*S, 3)
             data = data[t, y]
         else:
             # add training coordinates to the batch to log the overfitting loss
             batch.update({
-                'train_coords': self.train_coords.view(n_frames, -1, self.train_coords.shape[-1]).float(),
-                'train_data': self.train_data.view(n_frames, -1, self.train_data.shape[-1]).float(),
+                'train_coords': self.train_coords.view(self.train_coords.shape[0], -1, self.train_coords.shape[-1]).float(),
+                'train_data': self.train_data.view(self.train_data.shape[0], -1, self.train_data.shape[-1]).float(),
+                'train_frame_ids': self.train_frame_ids,
             })
         batch.update({
-            'coords': coords.view(n_frames, -1, coords.shape[-1]).float(), # T,S,3
-            'data': data.view(n_frames, -1, data.shape[-1]).float(), # T,S,3
-            'frame_ids': frame_ids.long(), # T
+            'coords': coords.view(self.frame_ids.shape[0], -1, coords.shape[-1]).float(), # T,S,3
+            'data': data.view(self.frame_ids.shape[0], -1, data.shape[-1]).float(), # T,S,3
+            'frame_ids': self.frame_ids, # T
         })
         return batch
 
