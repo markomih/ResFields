@@ -215,6 +215,12 @@ def compute_psnr(img0: torch.Tensor, img1: torch.Tensor, mask: Optional[torch.Te
     mse = (img0 - img1) ** 2
     return -10.0 / math.log(10)*torch.log(masked_mean(mse, mask))
 
+def sparse_loss(sdf_rnd, sdf_ray):
+    # sparse loss from SparseNeuS
+    sparse_loss_1 = torch.exp(-1000 * torch.abs(sdf_ray)).mean()
+    sparse_loss_2 = torch.exp(-100 * torch.abs(sdf_rnd)).mean()
+    sparse_loss = (sparse_loss_1+sparse_loss_2)*0.5
+    return sparse_loss
 
 # def compute_ssim(
 #     # img0: jnp.ndarray,

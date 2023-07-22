@@ -79,6 +79,24 @@ class DySDF(BaseModel):
         renderings = self.volume_rendering(rays_o, rays_d, rays_time, frame_id)
         return dict(coarse=renderings)
 
+    def _query_sdf(self, pts, frame_id, time_step):
+        # pts: Tensor with shape (B, n_pts, 3). Dtype=float32.
+        # frame_id: Tensor with shape (B). Dtype=long.
+        # time_step: Tensor with shape (B,1). Dtype=float32.
+        _deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
+        if _deform_codes is not None:
+            deform_codes = _deform_codes.view(-1, 1, _deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
+        else: 
+            deform_codes = _deform_codes
+
+        pts_time = time_step[:, None, :].expand(-1, pts.shape[1], -1)
+        pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
+        hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
+            
+        sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=time_step, frame_id=frame_id)[..., :1]
+        sdf = sdf.squeeze()
+        return sdf
+
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
         _deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
@@ -213,6 +231,8 @@ class DySDF(BaseModel):
             to_ret['normal'][inside_rays] = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
             if self.training:
                 to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
+        if self.training:
+            to_ret['sdf'] = sdf
         return to_ret
 
     def log_variables(self):

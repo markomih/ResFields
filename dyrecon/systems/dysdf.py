@@ -82,6 +82,16 @@ class DySDFSystem(BaseSystem):
             stats["loss_eikonal"] = out["gradient_error"]
             loss += loss_weight.eikonal * stats["loss_eikonal"]
 
+        if 'sdf' in out and loss_weight.get('sparse', 0.0) > 0.0:
+            rays_o, rays_d, rays_time = batch['rays'].split([3, 3, 1], dim=-1)
+            frame_id = batch['frame_id']
+            rnd_pts = torch.zeros(size=(rays_time.shape[0], 128, 3), device=self.device).uniform_(-1, 1)
+            
+            sdf_rnd = self.model._query_sdf(rnd_pts, frame_id, rays_time)
+            sdf_ray = out['sdf']
+            stats["loss_sparse"] = criterions.sparse_loss(sdf_rnd, sdf_ray)
+            loss += loss_weight.sparse * stats["loss_sparse"]
+
         # compute test metrics
         if not self.training:
             W, H = self.dataset.w, self.dataset.h

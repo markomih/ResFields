@@ -10,10 +10,10 @@ from pytorch3d.renderer.cameras import FoVOrthographicCameras, look_at_view_tran
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--src', 
-                    default='/home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren256ResFields123_40/save/meshes/it200000/', 
+                    default='/home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren128ResFields123_40/save/meshes/it200000/', 
                     help='Directory with meshes')
 parser.add_argument('--dst', 
-                    default='./tmp_meshes', 
+                    default='./tmp_meshes128', 
                     help='Directory with dst images')
 
 from pytorch3d.renderer import (
@@ -108,6 +108,7 @@ if __name__ == '__main__':
     device = torch.device('cuda')
     main(parser.parse_args())
 
+# python scripts/render_meshes.py --src /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren128ResFields123_40/save/meshes/it200000 --dst /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren128ResFields123_40/save/meshes/it200000_rnd
 # python scripts/render_meshes.py --src /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren256ResFields123_40/save/meshes/it200000 --dst /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren256ResFields123_40/save/meshes/it200000_rnd
 # python scripts/render_meshes.py --src /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren256/save/meshes/it200000 --dst /home/marko/remote_euler/projects/ResFields/exp_tsdf250k_mape/tsdf/resynth/baseSiren256/save/meshes/it200000_rnd
 # python scripts/render_meshes.py --src /media/STORAGE_4TB/projects/ResFields/datasets/resynth --dst /media/STORAGE_4TB/projects/ResFields/datasets/resynth_rnd

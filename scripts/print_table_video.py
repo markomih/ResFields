@@ -27,8 +27,10 @@ def main():
     ABL_EXP = True
     if ABL_EXP:
         DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_abl/video'
+        DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_abl_0.3/video'
         # DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_ablLayerRank/video'
-        DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_abl_noise_rep/video'
+        # DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_abl_noise_rep/video'
+        # DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_inter_rnd_repp/video'
     else:
         DIR_NAME = '/home/marko/remote_euler/projects/ResFields/exp_video_rnd/video'
     keys = ['metric_test_psnr', 'metric_train_psnr']
@@ -38,8 +40,10 @@ def main():
         file_name = os.path.join('save', 'results_it100000.yaml')
         if ABL_EXP:
             exp_dir = [
-                ('ResNet', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_resnet', file_name)),
-                ('ResFields none', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_none_rep', file_name)),
+            #     ('ResNet', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_resnet', file_name)),
+            #     ('ResFields none', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_none_rep', file_name)),
+                ('baseSiren512', os.path.join(DIR_NAME, dataset, 'baseSiren512', file_name)),
+                # ('ResFields none', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_none', file_name)),
                 ('ResFields cp_010', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_cp_010', file_name)),
                 ('ResFields cp_020', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_cp_020', file_name)),
                 ('ResFields cp_040', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_cp_040', file_name)),
@@ -56,10 +60,18 @@ def main():
                 ('ResFields tucker64_020', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_tucker64_020', file_name)),
                 ('ResFields tucker64_040', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_tucker64_040', file_name)),
                 ('ResFields tucker64_080', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_tucker64_080', file_name)),
+
+                ('loe_2_4_8', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_loe_2_4_8', file_name)),
+                ('loe_4_8_16', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_loe_4_8_16', file_name)),
+                ('loe_8_16_32', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_loe_8_16_32', file_name)),
+                ('loe_16_32_64', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_loe_16_32_64', file_name)),
+                ('loe_32_64_128', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_loe_32_64_128', file_name)),
+
                 ('ResFields vm_010', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010', file_name)),
                 ('ResFields vm_020', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_020', file_name)),
                 ('ResFields vm_040', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_040', file_name)),
                 ('ResFields vm_080', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_080', file_name)),
+
             ]
             # exp_dir = [
             #     ('Siren 512 ResFields123_05', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_05', file_name)),
@@ -71,33 +83,50 @@ def main():
             #     ('Siren 512 ResFields2_45', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields2_45', file_name)),
             #     ('Siren 512 ResFields2_60', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields2_60', file_name)),
             # ]
-            exp_dir = [
-                ('Siren512 _noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.1', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.1', file_name)),
-                ('Siren512 _noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.2', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.2', file_name)),
-                ('Siren512 _noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.3', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.3', file_name)),
-                ('Siren512 _noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.4', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.4', file_name)),
-                ('Siren512 _noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.5', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.5', file_name)),
-                ('Siren512 _noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.7', file_name)),
-                ('Siren512 ResFields123_vm_010_noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.7', file_name)),
+            # exp_dir = [
+            #     ('Siren512 _noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.1', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.1', file_name)),
+            #     ('Siren512 _noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.2', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.2', file_name)),
+            #     ('Siren512 _noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.3', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.3', file_name)),
+            #     ('Siren512 _noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.4', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.4', file_name)),
+            #     ('Siren512 _noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.5', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.5', file_name)),
+            #     ('Siren512 _noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren512_noise0.7', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.7', file_name)),
 
-                ('Siren1024 _noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.1', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.1', file_name)),
-                ('Siren1024 _noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.2', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.2', file_name)),
-                ('Siren1024 _noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.3', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.3', file_name)),
-                ('Siren1024 _noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.4', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.4', file_name)),
-                ('Siren1024 _noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.5', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.5', file_name)),
-                ('Siren1024 _noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.7', file_name)),
-                ('Siren1024 ResFields123_vm_010_noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.7', file_name)),
-            ]
+            #     ('Siren1024 _noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.1', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.1', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.1', file_name)),
+            #     ('Siren1024 _noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.2', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.2', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.2', file_name)),
+            #     ('Siren1024 _noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.3', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.3', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.3', file_name)),
+            #     ('Siren1024 _noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.4', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.4', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.4', file_name)),
+            #     ('Siren1024 _noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.5', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.5', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.5', file_name)),
+            #     ('Siren1024 _noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren1024_noise0.7', file_name)),
+            #     ('Siren1024 ResFields123_vm_010_noise0.7', os.path.join(DIR_NAME, dataset, 'baseSiren1024ResFields123_vm_010_noise0.7', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.1_mul', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.1_modulated', file_name)),
+            #     ('Siren512 ResFields123_vm_010_noise0.1_none', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm_010_noise0.1_none', file_name)),
+            # ]
+            # exp_dir = [
+            #     ('Siren-512 ', os.path.join(DIR_NAME, dataset, 'baseSiren512', file_name)),
+            #     ('lookup1.0', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_lookup1.0', file_name)),
+            #     ('inter1.0', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter1.0', file_name)),
+            #     ('inter0.95', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.95', file_name)),
+            #     ('inter0.9', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.9', file_name)),
+            #     ('inter0.8', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.8', file_name)),
+            #     ('inter0.7', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.7', file_name)),
+            #     ('inter0.6', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.6', file_name)),
+            #     ('inter0.5', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.5', file_name)),
+            #     ('inter0.4', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.4', file_name)),
+            #     ('inter0.3', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.3', file_name)),
+            #     ('inter0.2', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.2', file_name)),
+            #     ('inter0.1', os.path.join(DIR_NAME, dataset, 'baseSiren512ResFields123_vm10_inter0.1', file_name)),
+            # ]
         else:
             exp_dir = [
                     # ('Siren512', os.path.join(DIR_NAME, dataset, 'baseSiren512', file_name)),
@@ -160,3 +189,4 @@ def main():
 
 if __name__ == "__main__":    
     main()
+
