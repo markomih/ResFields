@@ -56,33 +56,50 @@ class DySDFSystem(BaseSystem):
             if strategy == 'interpolated':
                 alpha_ratio = max(min(self.global_step/alpha_ratio_cfg.get('max_steps', 50000), 1.), 0.)
         return alpha_ratio
+    
+    def _parse_loss_weight(self, key):
+        loss_val = self.config.system.loss.get(key, 0.0)
+        if isinstance(loss_val, float):
+            return loss_val
+        loss_val, start_iter = loss_val[0], loss_val[1]
+        if start_iter > self.global_step:
+            return 0.0
+        return loss_val
 
     def _level_fn(self, batch: Dict[str, Any], out: Dict[str, torch.Tensor], level_name: str):
         loss, stats = 0, OrderedDict()
-        loss_weight = self.config.system.loss
         mask = batch.get('mask', None)
-        if 'rgb' in batch and loss_weight.get('rgb', 0.0) > 0.0:
+        
+        # parse weights
+        rgb_weight = self._parse_loss_weight('rgb')
+        mask_weight = self._parse_loss_weight('mask')
+        depth_weight = self._parse_loss_weight('depth')
+        eikonal_weight = self._parse_loss_weight('eikonal')
+        sparse_weight = self._parse_loss_weight('sparse')
+        
+        # calculate loss terms
+        if 'rgb' in batch and rgb_weight > 0.0:
             stats['loss_rgb'] = masked_mean((out["rgb"] - batch["rgb"]).abs(), mask.reshape(-1, 1) if mask is not None else mask)
-            loss += loss_weight.rgb*stats['loss_rgb']
+            loss += rgb_weight*stats['loss_rgb']
 
-        if 'mask' in batch and loss_weight.get('mask', 0.0) > 0.0:
+        if 'mask' in batch and mask_weight > 0.0:
             stats['loss_mask'] = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask']> 0.5).float().squeeze())
-            loss += loss_weight.mask*stats['loss_mask']
+            loss += mask_weight*stats['loss_mask']
 
-        if 'depth' in batch and loss_weight.get('depth', 0.0) > 0.0:
+        if 'depth' in batch and depth_weight > 0.0:
             gt_depth = batch['depth'].squeeze()
             rnd_depth = out['depth'].squeeze()
             dmask = (gt_depth > 0.0) & (rnd_depth > 0.0)
             if mask is not None:
                 dmask = dmask & (mask > 0).squeeze()
             stats['loss_depth'] = masked_mean((rnd_depth - gt_depth).abs(), dmask.float())
-            loss += loss_weight.depth*stats['loss_depth']
+            loss += depth_weight*stats['loss_depth']
 
-        if 'gradient_error' in out and loss_weight.get('eikonal', 0.0) > 0.0:
+        if 'gradient_error' in out and eikonal_weight > 0.0:
             stats["loss_eikonal"] = out["gradient_error"]
-            loss += loss_weight.eikonal * stats["loss_eikonal"]
+            loss += eikonal_weight * stats["loss_eikonal"]
 
-        if 'sdf' in out and loss_weight.get('sparse', 0.0) > 0.0:
+        if 'sdf' in out and sparse_weight > 0.0:
             rays_o, rays_d, rays_time = batch['rays'].split([3, 3, 1], dim=-1)
             frame_id = batch['frame_id']
             rnd_pts = torch.zeros(size=(rays_time.shape[0], 128, 3), device=self.device).uniform_(-1, 1)
@@ -90,7 +107,7 @@ class DySDFSystem(BaseSystem):
             sdf_rnd = self.model._query_sdf(rnd_pts, frame_id, rays_time)
             sdf_ray = out['sdf']
             stats["loss_sparse"] = criterions.sparse_loss(sdf_rnd, sdf_ray)
-            loss += loss_weight.sparse * stats["loss_sparse"]
+            loss += sparse_weight * stats["loss_sparse"]
 
         # compute test metrics
         if not self.training:
