@@ -32,7 +32,7 @@
     <a href='https://paperswithcode.com/sota/3d-human-reconstruction-on-cape?p=keypointnerf-generalizing-image-based'>
 	<img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/keypointnerf-generalizing-image-based/3d-human-reconstruction-on-cape' alt='Generalizable Novel View Synthesis'></a></p>
 </p>
-<video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/72e5fff5-2960-417f-b946-e42b57492319"></video>
+<video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/b708331c-b3cf-43ab-9f2f-8458fe599fdb"></video>
 
 ## ToDos:
 - Data release
