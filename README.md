@@ -33,3 +33,54 @@
 	<img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/keypointnerf-generalizing-image-based/3d-human-reconstruction-on-cape' alt='Generalizable Novel View Synthesis'></a></p>
 </p>
 <video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/72e5fff5-2960-417f-b946-e42b57492319"></video>
+
+## ToDos:
+- Data release
+
+## News :new:
+- [2023/10/01] Code released. 
+
+## Installation 
+Please install python dependencies specified in `environment.yml`:
+```bash
+conda env create -f environment.yml
+conda activate ResFields
+```
+## Data preparation
+Please see [DATA_PREP.md](DATA_PREP.md) to set up the datasets.
+
+After this step the data directory follows the structure:
+```bash
+$DATA_ROOT
+├── Owlii
+├── Kinect4D
+├── Videos
+```
+## Experiments
+We demonstrate ResFields on four different tasks: 2D video approximation, Temporal SDF learning, and 4D NeRF reconstruction from RGB and RGBD views.
+Here, we will summarize how to run respective experiments. 
+Please see [BENCHMARK.md](BENCHMARK.md) on how to reproduce results for various baselines. 
+
+### 2D video approximation 
+To run vanilla siren execute:
+```shell script
+python train.py blabla
+```
+To run siren + ResFields execute:
+```shell script
+python train.py blabla
+```
+The results will be stored under the respective experiment directory.
+
+## Train your own model on the ZJU dataset
+Execute `train.py` script to train the model on the ZJU dataset.
+```shell script
+python train.py --config ./configs/blabla.json dataset.data_root=
+```
+After the training, the model checkpoint will be stored under `./exp_dir/zju/ckpts/last.ckpt`, which is equivalent to the one provided [here](https://drive.google.com/file/d/...).
+The valuation will be automatically executed after the training. 
+
+## Acknowledgements 
+We thank ... 
+
+
