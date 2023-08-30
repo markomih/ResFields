@@ -8,7 +8,7 @@
     <a target="_blank" href="https://vlg.inf.ethz.ch/team/Dr-Sergey-Prokudin.html"><strong>Sergey Prokudin</strong></a>
     ·
     <a target="_blank" href="https://scholar.google.com/citations?user=YYH0BjEAAAAJ&hl=en"><strong>Marc Pollefeys</strong></a>
-    .
+    ·
     <a target="_blank" href="https://vlg.inf.ethz.ch/team/Prof-Dr-Siyu-Tang.html"><strong>Siyu Tang</strong></a>
   </p>
   <h2 align="center"></h2>
@@ -25,12 +25,11 @@
       <img src='https://img.shields.io/badge/Paper-PDF-green?style=for-the-badge&logo=arXiv&logoColor=green' alt='Paper PDF'>
     </a>
     <a href='https://markomih.github.io/ResFields/' style='padding-left: 0.5rem;'>
-      <img src='https://img.shields.io/badge/KeypointNeRF-Page-orange?style=for-the-badge&logo=Google%20chrome&logoColor=orange' alt='Project Page'>
+      <img src='https://img.shields.io/badge/ResFields-Page-orange?style=for-the-badge&logo=Google%20chrome&logoColor=orange' alt='Project Page'>
   </p>
   <p align="center"><a href='https://paperswithcode.com/sota/generalizable-novel-view-synthesis-on-zju?p=keypointnerf-generalizing-image-based'>
 	<img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/keypointnerf-generalizing-image-based/generalizable-novel-view-synthesis-on-zju' alt='Generalizable Novel View Synthesis'></a>
-    <a href='https://paperswithcode.com/sota/3d-human-reconstruction-on-cape?p=keypointnerf-generalizing-image-based'>
-	<img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/keypointnerf-generalizing-image-based/3d-human-reconstruction-on-cape' alt='Generalizable Novel View Synthesis'></a></p>
+  </p>
 </p>
 <video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/b708331c-b3cf-43ab-9f2f-8458fe599fdb"></video>
 
