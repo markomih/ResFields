@@ -82,24 +82,34 @@ Increasing the model capacity in this way offers three key advantages:
 </details>
 <br>
 
-<details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#instructions">Instructions</a>
-    </li>
-    <li>
-      <a href="#demos">Demos</a>
-    </li>
-    <li>
-      <a href="#citation">Citation</a>
-    </li>
-  </ol>
-</details>
-<br/>
-
 ## Instructions
+- See [installation](docs/installation.md) to install all the required packages
+- See [data preparation](docs/data.md) to set up the datasets
+- See [benchmark](docs/benchmark.md) to reproduce results from the paper
 
+## Experiments
+We demonstrate ResFields on four different tasks: 2D video approximation, Temporal SDF learning, and 4D NeRF reconstruction from RGB and RGBD views.
+Here, we will summarize how to run respective experiments. 
+Please see [benchmark](docs/benchmark.md) on how to reproduce results for various baselines. 
+
+### 2D video approximation 
+To run vanilla siren execute:
+```shell script
+python train.py blabla
+```
+To run siren + ResFields execute:
+```shell script
+python train.py blabla
+```
+The results will be stored under the respective experiment directory.
+
+## Train your own model on the ZJU dataset
+Execute `train.py` script to train the model on the ZJU dataset.
+```shell script
+python train.py --config ./configs/blabla.json dataset.data_root=
+```
+After the training, the model checkpoint will be stored under `./exp_dir/zju/ckpts/last.ckpt`, which is equivalent to the one provided [here](https://drive.google.com/file/d/...).
+The valuation will be automatically executed after the training. 
 
 ## ToDos:
 - Preprocessing code for the RGB-D setup
@@ -121,30 +131,6 @@ $DATA_ROOT
 ├── Kinect4D
 ├── Videos
 ```
-## Experiments
-We demonstrate ResFields on four different tasks: 2D video approximation, Temporal SDF learning, and 4D NeRF reconstruction from RGB and RGBD views.
-Here, we will summarize how to run respective experiments. 
-Please see [BENCHMARK.md](BENCHMARK.md) on how to reproduce results for various baselines. 
-
-### 2D video approximation 
-To run vanilla siren execute:
-```shell script
-python train.py blabla
-```
-To run siren + ResFields execute:
-```shell script
-python train.py blabla
-```
-The results will be stored under the respective experiment directory.
-
-## Train your own model on the ZJU dataset
-Execute `train.py` script to train the model on the ZJU dataset.
-```shell script
-python train.py --config ./configs/blabla.json dataset.data_root=
-```
-After the training, the model checkpoint will be stored under `./exp_dir/zju/ckpts/last.ckpt`, which is equivalent to the one provided [here](https://drive.google.com/file/d/...).
-The valuation will be automatically executed after the training. 
-
 
 ## Citation
 
@@ -167,7 +153,6 @@ Some great prior work we benefit from:
 - [PyTorch3D](https://github.com/facebookresearch/pytorch3d) for visualizing meshes and some evaluation scripts
 - [Instant NSR](https://github.com/bennyguo/instant-nsr-pl) for inspiring the code structure
 
-### Disclosure of Funding
 This project has been supported by [the Innosuisse Flagship project PROFICIENCY](https://www.surgicalproficiency.ch/).
 
 ## License
