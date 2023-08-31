@@ -6,6 +6,7 @@ The code was tested on Ubuntu 22.04 with CUDA 11.3 and Python 3.8.
 
 ```bash
 git clone https://github.com/markomih/ResFields.git
+cd ResFields
 ```
 
 ## 2. Install necessary dependencies .
