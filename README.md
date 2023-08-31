@@ -47,11 +47,63 @@ ResField layers incorporate time-dependent weights into MLPs to effectively repr
 |                               ![TNeRF](assets/tnerf.gif)                           |                                            ![TNeRF_RGBD](assets/tnerf_rgbd.gif)                                           |
 |                              Dynamic NeRFs from 4 RGB views                        |                                                   Dynamic NeRFs from 3 RGB-D                                              |
 
-## ToDos:
-- Data release
 
-## News :new:
+## News :triangular_flag_on_post:
 - [2023/10/01] Code released. 
+
+## Key idea of ResFields
+Our key idea is to substitute one or several MLP layers with time-dependent layers whose weights are modeled as trainable residual parameters added to the existing layer weights.
+
+<img width="30%" src='https://markomih.github.io/ResFields/images/resfield_mlp_web.png'>
+
+We propose to implement the residual parameters as a global low-rank spanning set and a set of time-dependent coefficients. this modeling enhances the generalization properties and further reduces the memory footprint caused by maintaining additional network parameters. 
+
+<img width="30%" src='https://markomih.github.io/ResFields/images/resfield_decomp.png'>
+
+These residual weights are modeled as a learnable low-rank composition.
+
+Increasing the model capacity in this way offers three key advantages:
+
+1) **Runtime**: the underlying MLP does not increase in size and hence maintains the inference and training speed.
+2) **Generalizability**: retains the implicit regularization and generalization properties of MLPs.
+3) **Universality**: ResFields are versatile, easily extendable, and compatible with most MLP-based methods for spatiotemporal signals.
+
+
+<details><summary>Please consider citing our work if you find it useful</summary>
+
+```bibtex
+@inproceedings{Mihajlovic:ResFields:2023,
+  title = {{ResFields}: Residual Neural Fields for Spatiotemporal Signals},
+  author = {Mihajlovic, Marko and Prokudin, Sergey and Pollefeys, Marc and Tang, Siyu},
+  booktitle={Arxiv},
+  year={2023},
+}
+```
+</details>
+<br>
+
+<details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#instructions">Instructions</a>
+    </li>
+    <li>
+      <a href="#demos">Demos</a>
+    </li>
+    <li>
+      <a href="#citation">Citation</a>
+    </li>
+  </ol>
+</details>
+<br/>
+
+## Instructions
+
+
+## ToDos:
+- Preprocessing code for the RGB-D setup
+- RGB-D data
 
 ## Installation 
 Please install python dependencies specified in `environment.yml`:
