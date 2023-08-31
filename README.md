@@ -38,6 +38,11 @@
 ResField layers incorporate time-dependent weights into MLPs to effectively represent complex temporal signals. 
 </p>
 ## Applications
+|                              ![Video](assets/cat.gif)                              |                                                ![TSDF](assets/tsdf.gif)                                                   |
+| :--------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------: |
+|                               2D Video Approximation                               |                                                   Temporal SDF Capture                                                    |
+|                               ![TNeRF](assets/tnerf.gif)                           |                                            ![TNeRF_RGBD](assets/tnerf_rgbd.gif)                                           |
+|                              Dynamic NeRFs from 4 RGB views                        |                                                   Dynamic NeRFs from 3 RGB-D                                              |
 
 ## ToDos:
 - Data release
