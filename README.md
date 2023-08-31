@@ -145,7 +145,36 @@ python train.py --config ./configs/blabla.json dataset.data_root=
 After the training, the model checkpoint will be stored under `./exp_dir/zju/ckpts/last.ckpt`, which is equivalent to the one provided [here](https://drive.google.com/file/d/...).
 The valuation will be automatically executed after the training. 
 
-## Acknowledgements 
-We thank ... 
 
+## Citation
 
+```bibtex
+@inproceedings{Mihajlovic:ResFields:2023,
+  title = {{ResFields}: Residual Neural Fields for Spatiotemporal Signals},
+  author = {Mihajlovic, Marko and Prokudin, Sergey and Pollefeys, Marc and Tang, Siyu},
+  booktitle={Arxiv},
+  year={2023},
+}
+```
+
+## Acknowledgments
+We thank Hongrui Cai and Ruizhi Shao for providing additional details about the baseline methods and Anpei Chen, Shaofei Wang, and Songyou Peng for proofreading the manuscript and proving useful suggestions. 
+
+Some great prior work we benefit from:
+- [Siren](https://github.com/vsitzmann/siren) for the 2D video approximation task
+- [NeuS](https://github.com/Totoro97/NeuS) for data preprocessing and following their data format
+- [Owlii](https://mpeg-pcc.org/index.php/pcc-content-database/owlii-dynamic-human-textured-mesh-sequence-dataset/), [DeformingThings4D](https://github.com/rabbityl/DeformingThings4D), and [ReSynth](https://pop.is.tue.mpg.de/) for datasets
+- [PyTorch3D](https://github.com/facebookresearch/pytorch3d) for visualizing meshes and some evaluation scripts
+- [Instant NSR](https://github.com/bennyguo/instant-nsr-pl) for inspiring the code structure
+
+### Disclosure of Funding
+This project has been supported by [the Innosuisse Flagship project PROFICIENCY](https://www.surgicalproficiency.ch/).
+
+## License
+The code and models are available for use without any restrictions. 
+See the [LICENSE](LICENSE) file for details. 
+
+## Contact
+Please open a PR or contact [Marko Mihajlovic](https://markomih.github.io/) for any questions. 
+We greatly appreciate everyone's feedback and insights. 
+Please do not hesitate to get in touch. 
