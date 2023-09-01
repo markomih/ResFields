@@ -2,7 +2,6 @@ import numpy as np
 import skvideo.io
 import torch
 import datasets
-from utils.misc import get_rank
 import pytorch_lightning as pl
 import skvideo.datasets
 

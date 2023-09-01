@@ -10,10 +10,6 @@ sys.path.append(osp.join(osp.dirname(osp.dirname(osp.abspath(__file__))), 'resfi
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', required=True, help='path to config file')
 parser.add_argument('--gpu', default='-1', help='GPU(s) to be used. Set -1 to use all gpus.')
-# parser.add_argument('--resume', default=None, help='path to the weights to be resumed')
-# parser.add_argument('--resume_weights_only', action='store_true',
-#     help='specify this argument to restore only the weights (w/o training states), e.g. --resume path/to/resume --resume_weights_only'
-# )
 
 # group = parser.add_mutually_exclusive_group(required=True)
 parser.add_argument('--train', action='store_true', default=False)
@@ -38,7 +34,6 @@ def main():
     config = load_config(args.config, cli_args=extras)
     config.cmd_args = vars(args)
 
-    # config.trial_name = config.get('trial_name') or (config.tag + datetime.now().strftime('@%Y%m%d-%H%M%S'))
     config.exp_dir = config.get('exp_dir') or osp.join(args.exp_dir, config.name)
     config.save_dir = config.get('save_dir') or osp.join(config.exp_dir, 'save')
     config.ckpt_dir = config.get('ckpt_dir') or osp.join(config.exp_dir, 'ckpt')
@@ -99,9 +94,6 @@ def main():
         accelerator='gpu',
         callbacks=callbacks,
         logger=loggers,
-        # strategy='ddp',  # TIP: disable ddp for easier debugging with pdb
-        # strategy='ddp_find_unused_parameters_false',  # TIP: disable ddp for easier debugging with pdb
-        # strategy='find_unused_parameters=True',  # TIP: disable ddp for easier debugging with pdb
         **config.trainer
     )
     if args.train:

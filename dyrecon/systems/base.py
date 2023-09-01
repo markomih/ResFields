@@ -9,11 +9,6 @@ from utils.misc import config_to_primitive
 
 
 class BaseSystem(pl.LightningModule, SaverMixin):
-    """
-    Two ways to print to console:
-    1. self.print: correctly handle progress bar
-    2. rank_zero_info: use the logging module
-    """
     def __init__(self, config):
         super().__init__()
         self.config = config
