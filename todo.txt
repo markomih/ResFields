@@ -1,5 +1,0 @@
-python launch.py --gpu -1 --config ./configs/dysdf/base.yaml ./configs/dysdf/tnerf.yaml dataset.scene=model trial_name=DEBUG --train
-
-- add scheduler
-- deform network
-- reproduce tnerf-ind1 results
