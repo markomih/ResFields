@@ -21,6 +21,8 @@ After downloading the data, `DATA_ROOT` will have the following structure:
     │   │   └── camera_*/**
     │   └── model/
     │   │   └── camera_*/**
+    ├── Video/
+    │   └── cat.mp4
     ├── ReSynth/**
     │   └── dress
     │       └── mesh*.ply
