@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 Now you can verify that the environment is set up correctly by running a simple experiment of learning a 2D video via a Siren+ResField MLP: 
 ```bash
-python train ...
+python train TODO
 ```
 
 ## 3. [Optional] Download the data data
