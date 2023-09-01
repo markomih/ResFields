@@ -28,11 +28,6 @@
 <p align="center">
 <a href='https://colab.research.google.com/drive/1YRgwoRCZIrSB2e7auEWFyG10Xzjbrbno?usp=sharing'><img src='https://img.shields.io/badge/Colab Tutorial-ec740b.svg?logo=googlecolab' alt='Google Colab'></a>
 
-</p>
-  <p align="center"><a href='https://paperswithcode.com/sota/generalizable-novel-view-synthesis-on-zju?p=keypointnerf-generalizing-image-based'>
-	<img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/keypointnerf-generalizing-image-based/generalizable-novel-view-synthesis-on-zju' alt='Generalizable Novel View Synthesis'></a>
-  </p>
-</p>
 <video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/14531518-5cc0-4869-8a1c-f9817d49f0e6"></video>
 <p>
 ResField layers incorporate time-dependent weights into MLPs to effectively represent complex temporal signals. 
