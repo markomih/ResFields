@@ -26,7 +26,7 @@
     </a>
   </p>
 <p align="center">
-<a href='https://colab.research.google.com/drive/1YRgwoRCZIrSB2e7auEWFyG10Xzjbrbno?usp=sharing'><img src='https://img.shields.io/badge/Colab Demo-ec740b.svg?logo=googlecolab' alt='Google Colab'></a>
+<a href='https://colab.research.google.com/drive/1YRgwoRCZIrSB2e7auEWFyG10Xzjbrbno?usp=sharing'><img src='https://img.shields.io/badge/Colab Tutorial-ec740b.svg?logo=googlecolab' alt='Google Colab'></a>
 
 </p>
   <p align="center"><a href='https://paperswithcode.com/sota/generalizable-novel-view-synthesis-on-zju?p=keypointnerf-generalizing-image-based'>
