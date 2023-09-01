@@ -1,0 +1,43 @@
+# Datasets
+
+Please find the processed datasets at [here](https://drive.google.com/drive/u/0/folders/XXX) or execute the following script to download all sequences:
+```bash
+bash ./download_data.sh ./DATA_ROOT # Make sure that gdown is installed
+```
+All datasets are organized as `<DATA_ROOT>/<DATASET>/<SEQUENCE>`.
+
+If you need access to the [Deforming4D](https://github.com/rabbityl/DeformingThings4D) and [ReSynth](https://pop.is.tue.mpg.de/) datasets, make sure that you have the right license. 
+
+After downloading the data, `DATA_ROOT` will have the following structure: 
+
+```
+<DATA_ROOT>/
+    ├── Owlii/
+    │   └── basketball/
+    │   │   └── camera_*/**
+    │   └── exercise/
+    │   │   └── camera_*/**
+    │   └── dance/
+    │   │   └── camera_*/**
+    │   └── model/
+    │   │   └── camera_*/**
+    ├── ReSynth/**
+    │   └── dress
+    │       └── mesh*.ply
+    │           └── <ITEM_ID>.png
+    ├── DeformingThings4D/**
+    │   ├── bear3EP_Agression.anime
+    │   ├── tigerD8H_Swim17.anime
+    │   ├── vampire_Breakdance1990.anime
+    │   └── vanguard_JoyfulJump.anime
+    └── Kinect4D
+        └── book/
+        │   └── camera_*/**
+        └── hand/
+        │   └── camera_*/**
+        └── writing/
+        │   └── camera_*/**
+        └── glasses/
+            └── camera_*/**
+```
+Note: We will release the Kinect4D data as soon as possible. 
