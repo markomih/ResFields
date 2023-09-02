@@ -22,10 +22,11 @@ pip install tqdm scikit-image opencv-python configargparse lpips imageio-ffmpeg 
 
 Now you can verify that the environment is set up correctly by running a simple experiment of learning a 2D video via a Siren+ResField MLP: 
 ```bash
-python launch.py --config ./configs/video/base.yaml --train --predict dataset.video_path=../datasets/video_data/cat_video.mp4 model.resfield_layers=[1,2,3] model.composition_rank=10 tag=ResFields
+cd dyrecon
+python launch.py --config ./configs/video/base.yaml --train --predict model.resfield_layers=[1,2,3] model.composition_rank=10 tag=ResFields
 
 # or the following command for the vanilla Siren
-python launch.py --config ./configs/video/base.yaml --train --predict dataset.video_path=../datasets/video_data/cat_video.mp4 tag=vanilla
+python launch.py --config ./configs/video/base.yaml --train --predict tag=vanilla
 ```
 
 ## 3. [Optional] Download the data data
