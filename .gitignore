@@ -139,3 +139,4 @@ submodules/
 /exp
 wandb/
 /exp_owlii_benchmarking
+/DATA_ROOT

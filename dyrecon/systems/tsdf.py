@@ -16,8 +16,11 @@ try:
     from pytorch3d.structures import Meshes
     from pytorch3d.renderer.mesh import Textures
     from pytorch3d.renderer import look_at_rotation
+    PYTORCH3D_AVAILABLE = True
 except Exception:
+    PYTORCH3D_AVAILABLE = False
     print('Warning: pytorch3d not installed.', 'Needed for Chamfer loss and mesh sampling.')
+    print('See https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md for installation instructions.')
 
 @systems.register('tsdf_system')
 class TSDFSystem(BaseSystem):
@@ -31,7 +34,8 @@ class TSDFSystem(BaseSystem):
             self.config.model.mode = 'interpolation'
 
         rnd_res = self.config.model.metadata.get('rnd_resolution', 512)
-        self.mesh_renderer = MeshRenderer(rnd_res)
+        if PYTORCH3D_AVAILABLE:
+            self.mesh_renderer = MeshRenderer(rnd_res)
 
     def frame2time_step(self, frame_id):
         time_step = 2*(frame_id / (self.n_frames+2) - 0.5) #[-1.0,1.0]
@@ -111,29 +115,31 @@ class TSDFSystem(BaseSystem):
         )
         torch_gt_mesh = Meshes(batch['gt_vertices'][None].float(), batch['gt_faces'][None].float())
 
-        CD, ND = self.mesh_renderer.eval_mesh(torch_pred_mesh, torch_gt_mesh)
+        metrics_dict = {}
+        if PYTORCH3D_AVAILABLE:
+            CD, ND = self.mesh_renderer.eval_mesh(torch_pred_mesh, torch_gt_mesh)
 
-        metrics_dict = dict(metric_CD=CD, metric_ND=ND)
+            metrics_dict = dict(metric_CD=CD, metric_ND=ND)
 
-        # render mesh for visualization
-        rnd_gt = self.mesh_renderer.render_mesh(torch_gt_mesh, mode='n').squeeze(0)[..., :3]
-        rnd_pred = self.mesh_renderer.render_mesh(torch_pred_mesh, mode='n').squeeze(0)[..., :3]
-        _log_imgs = [
-            {'type': 'rgb', 'img': rnd_gt, 'kwargs': {'data_format': 'HWC'}},
-            {'type': 'rgb', 'img': rnd_pred, 'kwargs': {'data_format': 'HWC'}},
-        ]
-        file_name = f"{batch['index'].squeeze().item():06d}"
-        if prefix in ['test', 'predict']:
-            self.save_image_grid(f"rgb_gt/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-2]])
-            self.save_image_grid(f"rgb/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-1]])
-        img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}/{file_name}.png", _log_imgs)
-        # log images to tensorboard
-        if self.trainer.is_global_zero:
-            if self.logger is not None:
-                if 'WandbLogger' in str(type(self.logger)):
-                    self.logger.log_image(key=f'{prefix}/renderings', images=[img/255.], caption=["renderings"])
-                else:
-                    self.logger.experiment.add_image(f'{prefix}/renderings', img/255., self.global_step, dataformats='HWC')
+            # render mesh for visualization
+            rnd_gt = self.mesh_renderer.render_mesh(torch_gt_mesh, mode='n').squeeze(0)[..., :3]
+            rnd_pred = self.mesh_renderer.render_mesh(torch_pred_mesh, mode='n').squeeze(0)[..., :3]
+            _log_imgs = [
+                {'type': 'rgb', 'img': rnd_gt, 'kwargs': {'data_format': 'HWC'}},
+                {'type': 'rgb', 'img': rnd_pred, 'kwargs': {'data_format': 'HWC'}},
+            ]
+            file_name = f"{batch['index'].squeeze().item():06d}"
+            if prefix in ['test', 'predict']:
+                self.save_image_grid(f"rgb_gt/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-2]])
+                self.save_image_grid(f"rgb/it{self.global_step:06d}-{prefix}/{file_name}.png", [_log_imgs[-1]])
+            img = self.save_image_grid(f"it{self.global_step:06d}-{prefix}/{file_name}.png", _log_imgs)
+            # log images to tensorboard
+            if self.trainer.is_global_zero:
+                if self.logger is not None:
+                    if 'WandbLogger' in str(type(self.logger)):
+                        self.logger.log_image(key=f'{prefix}/renderings', images=[img/255.], caption=["renderings"])
+                    else:
+                        self.logger.experiment.add_image(f'{prefix}/renderings', img/255., self.global_step, dataformats='HWC')
 
         metrics_dict['index'] = batch['index']
         return metrics_dict

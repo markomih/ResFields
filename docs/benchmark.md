@@ -24,6 +24,7 @@ To reproduce results on the Temporal SDF shape estimation task, execute:
 export sequence="../DATA_ROOT/ReSynth/dress" # or path to a deforming things 4D sequence
 python launch.py --exp_dir ../exp_tsdf --config ./configs/tsdf/base.yaml --train model.hidden_features=256 dataset.path=$sequence tag=Siren256
 python launch.py --exp_dir ../exp_tsdf --config ./configs/tsdf/base.yaml --train model.hidden_features=256 dataset.path=$sequence model.resfield_layers=[1,2,3] model.composition_rank=10 tag=Siren256ResFields123_10
+# note that ReSynth uses high-resolution meshes which makes training slow. Training on DeformingThings4D is significantly faster
 ```
 
 ![TSDF](../assets/tsdf.gif)
