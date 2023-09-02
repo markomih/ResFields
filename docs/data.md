@@ -7,12 +7,12 @@ unzip DATA_ROOT.zip
 ```
 All datasets are organized as `<DATA_ROOT>/<DATASET>/<SEQUENCE>`.
 
-If you need access to the [Deforming4D](https://github.com/rabbityl/DeformingThings4D) and [ReSynth](https://pop.is.tue.mpg.de/) datasets, make sure that you have the right license. 
+If you need access to the [Deforming4D](https://github.com/rabbityl/DeformingThings4D) dataset, you will need to manually obtain the license and store the data under `./DATA_ROOT/DeformingThings4D`. 
 
 After downloading the data, `DATA_ROOT` will have the following structure: 
 
 ```
-<DATA_ROOT>/
+DATA_ROOT/
     ├── Owlii/
     │   └── basketball/
     │   │   └── camera_*/**
