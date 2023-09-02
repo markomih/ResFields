@@ -18,7 +18,7 @@ dataset:
 
   name: dysdf_dataset
   scene: ???
-  data_root: ../datasets/public_data/${dataset.scene}
+  data_root: ../DATA_ROOT/Owlii/${dataset.scene}
   sampling: ${model.sampling}
 
   predict:

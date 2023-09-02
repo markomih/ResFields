@@ -18,7 +18,7 @@ DATA_ROOT/
     │   │   └── camera_*/**
     │   └── exercise/
     │   │   └── camera_*/**
-    │   └── dance/
+    │   └── dancer/
     │   │   └── camera_*/**
     │   └── model/
     │   │   └── camera_*/**
