@@ -1,8 +1,9 @@
 # Datasets
 
-Please find the processed datasets at [here](https://drive.google.com/drive/u/0/folders/XXX) or execute the following script to download all sequences:
+Please find the processed datasets at [here](https://drive.google.com/file/d/1KEZY3_bReZL23MNvSITtrsg8Spbh7Fo7/view?usp=sharing) or execute the following script to download all sequences:
 ```bash
-bash ./download_data.sh ./DATA_ROOT # Make sure that gdown is installed
+gdown 1KEZY3_bReZL23MNvSITtrsg8Spbh7Fo7
+unzip DATA_ROOT.zip
 ```
 All datasets are organized as `<DATA_ROOT>/<DATASET>/<SEQUENCE>`.
 
