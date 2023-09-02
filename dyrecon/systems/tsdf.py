@@ -191,7 +191,7 @@ class MeshRenderer:
         self.renderer = renderer.MeshRenderer(rasterizer=rasterizer, shader=shader)
 
     @torch.no_grad()
-    def render_mesh(self, mesh: Meshes, colors=None, mode='npat', flip_normal=False):
+    def render_mesh(self, mesh, colors=None, mode='npat', flip_normal=False):
         """
         mode: normal, phong, texture
         """
@@ -237,7 +237,7 @@ class MeshRenderer:
             raise NotImplementedError
     
     @torch.no_grad()
-    def eval_mesh(self, pred_mesh:Meshes, gt_mesh: Meshes, num_samples:int = 100000): # pytorch3d meshes
+    def eval_mesh(self, pred_mesh, gt_mesh, num_samples:int = 100000): # pytorch3d meshes
         pred_pts, pred_normals = sample_points_from_meshes(pred_mesh, num_samples, return_normals=True)
         gt_pts, gt_normals = sample_points_from_meshes(gt_mesh, num_samples, return_normals=True)
 
@@ -251,4 +251,3 @@ class MeshRenderer:
             norm=1,
         )
         return ch_dist, normal_dist
-
