@@ -1,5 +1,5 @@
 #!/bin/bash
-# template CMD: python launch.py --gpu -1 --config ./configs/dysdf/tnerf.yaml ./configs/dysdf/tnerf.yaml --train dataset.scene=model model.sdf_net.d_hidden=128 model.sdf_net.independent_layers=[1] tag=128ResFields1
+# template CMD: python launch.py --gpu -1 --config ./configs/dysdf/tnerf.yaml ./configs/dysdf/tnerf.yaml --train dataset.scene=model model.sdf_net.d_hidden=128 model.sdf_net.resfield_layers=[1] tag=128ResFields1
 set -x
 # Exit script when a command returns nonzero state
 set -e

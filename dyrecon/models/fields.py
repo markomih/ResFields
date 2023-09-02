@@ -86,7 +86,7 @@ class SDFNetwork(BaseModel):
         self.weight_norm = self.config.weight_norm
         self.inside_outside = self.config.inside_outside
 
-        self.independent_layers = self.config.get('independent_layers', [])
+        self.resfield_layers = self.config.get('resfield_layers', [])
         self.composition_rank = self.config.get('composition_rank', 10)
         # create nets
         dims = [self.d_in_1 + self.d_in_2] + [self.d_hidden for _ in range(self.n_layers)] + [self.d_out]
@@ -114,8 +114,8 @@ class SDFNetwork(BaseModel):
             else:
                 out_dim = dims[l + 1]
 
-            _rank = self.composition_rank if l in self.independent_layers else 0
-            _capacity = self.capacity if l in self.independent_layers else 0
+            _rank = self.composition_rank if l in self.resfield_layers else 0
+            _capacity = self.capacity if l in self.resfield_layers else 0
             lin = resfields.Linear(dims[l], out_dim, rank=_rank, capacity=_capacity, mode='lookup')
 
             if self.geometric_init:
@@ -406,7 +406,7 @@ class SirenMLP(BaseModel):
         num_hidden_layers = self.config.num_hidden_layers
         # resfield parameters
         composition_rank = self.config.composition_rank
-        independent_layers = self.config.independent_layers
+        resfield_layers = self.config.resfield_layers
         capacity = self.config.capacity
         mode = self.config.get('mode', 'lookup')
         coeff_ratio = self.config.get('coeff_ratio', 1.0)
@@ -417,8 +417,8 @@ class SirenMLP(BaseModel):
         self.nl = Sine()
         self.net = []
         for i in range(len(dims) - 1):
-            _rank = composition_rank if i in independent_layers else 0
-            _capacity = capacity if i in independent_layers else 0
+            _rank = composition_rank if i in resfield_layers else 0
+            _capacity = capacity if i in resfield_layers else 0
             if not isinstance(_rank, int) and compression != 'tucker':
                 _rank = _rank[i]
             lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode, compression=compression, fuse_mode=fuse_mode, coeff_ratio=coeff_ratio)
@@ -464,7 +464,7 @@ class ReluMLP(BaseModel):
         num_hidden_layers = self.config.num_hidden_layers
         # resfield parameters
         composition_rank = self.config.composition_rank
-        independent_layers = self.config.independent_layers
+        resfield_layers = self.config.resfield_layers
         capacity = self.config.capacity
         mode = self.config.get('mode', 'lookup')
         coeff_ratio = self.config.get('coeff_ratio', 1.0)
@@ -475,8 +475,8 @@ class ReluMLP(BaseModel):
         self.nl = torch.nn.ReLU()
         self.net = []
         for i in range(len(dims) - 1):
-            _rank = composition_rank if i in independent_layers else 0
-            _capacity = capacity if i in independent_layers else 0
+            _rank = composition_rank if i in resfield_layers else 0
+            _capacity = capacity if i in resfield_layers else 0
 
             lin = resfields.Linear(dims[i], dims[i + 1], rank=_rank, capacity=_capacity, mode=mode, compression=compression, fuse_mode=fuse_mode, coeff_ratio=coeff_ratio)
             lin.apply(self.init_weights_normal)

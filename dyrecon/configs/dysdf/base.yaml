@@ -57,7 +57,7 @@ model:
   sdf_net:
     name: sdf_network
     n_frames: 100
-    independent_layers: []
+    resfield_layers: []
     composition_rank: 10
     d_out: 129
     d_in_1: 3

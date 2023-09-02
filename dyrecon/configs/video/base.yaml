@@ -19,7 +19,7 @@ model:
   num_hidden_layers: 4
 
   composition_rank: 10
-  independent_layers: []
+  resfield_layers: []
   capacity: n_frames
   mode: lookup
   compression: vm
