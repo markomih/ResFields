@@ -51,7 +51,7 @@ python launch.py --config ./configs/dysdf/$method.yaml dataset.scene=$sequence -
 ```
 Note that `method` could be any of the baselines (tnerf, dnerf, dynerf, hypernerf, ndr, nerfies) and squence could be any Owlii sequence (basketball, dancer, exercise, model).
 
-Or to reproduce the bechmark on the Owlii dataset (Table 3 in the paper), execute the bash script
+Or to reproduce the benchmark on the Owlii dataset (Table 3 in the paper), execute the bash script
 ```bash
 cd ./dyrecon
 bash ./benchmark_owlii.sh
