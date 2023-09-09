@@ -50,7 +50,7 @@ class DySDF(BaseModel):
         
         self.alpha_composing = self.config.get('alpha_composing', 'volsdf')
         assert self.alpha_composing in ['volsdf', 'neus', 'nerf'], 'Only support volsdf, neus, nerf'
-        self.estimate_normals = self.estimate_normals in ['volsdf', 'neus']
+        self.estimate_normals = self.alpha_composing in ['volsdf', 'neus']
         if self.alpha_composing in ['volsdf', 'neus']:
             self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
             self.mc_threshold = 0
