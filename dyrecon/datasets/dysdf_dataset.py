@@ -215,7 +215,7 @@ class DySDFDatasetBase():
             if self.has_masks:
                 to_ret['mask'] = self.all_fg_masks[index].view(-1)
             if self.has_depth:
-                to_ret['has_depth'] = self.depths[index].view(-1) # n_rays
+                to_ret['depth'] = self.depths[index].view(-1) # n_rays
         frame_id = self.frame_ids[index]
         rays_time = self.frame_id_to_time(frame_id).view(-1, 1)
         if rays_time.shape[0] != rays_o.shape[0]:
