@@ -118,7 +118,7 @@ class DySDFSystem(BaseSystem):
                 metric_ssim = criterions.compute_ssim(out['rgb'].view(H, W, 3), batch['rgb'].view(H, W, 3)),
             ))
             if mask is not None:
-                stats['metric_mask'] = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask'] > 0.5).float().squeeze()),
+                stats['metric_mask'] = criterions.binary_cross_entropy(out['opacity'].clip(1e-3, 1.0 - 1e-3).squeeze(), (batch['mask'] > 0.5).float().squeeze())
 
 
         return loss, stats
