@@ -212,6 +212,10 @@ class DySDFDatasetBase():
             directions = self.directions[index].squeeze(0) #(H,W,3)
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.all_images[index].view(-1, self.all_images.shape[-1])
+            if self.has_masks:
+                to_ret['mask'] = self.all_fg_masks[index].view(-1)
+            if self.has_depth:
+                to_ret['has_depth'] = self.depths[index].view(-1) # n_rays
         frame_id = self.frame_ids[index]
         rays_time = self.frame_id_to_time(frame_id).view(-1, 1)
         if rays_time.shape[0] != rays_o.shape[0]:
