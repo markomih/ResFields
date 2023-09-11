@@ -26,7 +26,7 @@
     </a>
   </p>
 <p align="center">
-<a href='https://colab.research.google.com/drive/1YRgwoRCZIrSB2e7auEWFyG10Xzjbrbno?usp=sharing'><img src='https://img.shields.io/badge/Colab Tutorial-ec740b.svg?logo=googlecolab' alt='Google Colab'></a>
+<a href='https://colab.research.google.com/drive/1kOf8RCXSGYQHyqJav_XJK73Rfdo74deY?usp=sharing'><img src='https://img.shields.io/badge/Colab Tutorial-ec740b.svg?logo=googlecolab' alt='Google Colab'></a>
 
 <!-- <video width="100%" autoplay muted controls loop src="https://github.com/markomih/ResFields/assets/13746017/4a0a39eb-77ae-4b7e-b5f9-a9b5544cc806"></video> -->
 <p>
