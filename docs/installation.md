@@ -13,7 +13,7 @@ cd ResFields
 
 Create a new `conda` [environment](https://www.anaconda.com/) with all dependencies: 
 ```bash
-conda create -n ResFieldss python=3.9 -y
+conda create -n ResFields python=3.9 -y
 conda activate ResFields
 conda install cudatoolkit=11.6  -y
 pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
