@@ -88,11 +88,11 @@ Increasing the model capacity in this way offers three key advantages:
 
 ## Citation
 ```bibtex
-@inproceedings{Mihajlovic:ResFields:2023,
-  title = {{ResFields}: Residual Neural Fields for Spatiotemporal Signals},
-  author = {Mihajlovic, Marko and Prokudin, Sergey and Pollefeys, Marc and Tang, Siyu},
-  booktitle={Arxiv},
-  year={2023},
+@article{Mihajlovic:ResFields:2023,
+  title={ResFields: Residual Neural Fields for Spatiotemporal Signals},
+  author={Mihajlovic, Marko and Prokudin, Sergey and Pollefeys, Marc and Tang, Siyu},
+  journal={arXiv preprint arXiv:2309.03160},
+  year={2023}
 }
 ```
 
