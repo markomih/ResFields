@@ -30,8 +30,6 @@ python launch.py --exp_dir ../exp_tsdf --config ./configs/tsdf/base.yaml --train
 ![TSDF](../assets/tsdf.gif)
 
 # Dynamic NeRF from 4 RGB views
-Please find all checkpoints [here](https://drive.google.com/drive/folders/1c6zl72ln3aC3SbISPltMKiNeIgDuZH1Q), including:
-
 We consider the following models in our benchmark: 
 1. [TNeRF](https://neural-3d-video.github.io/) Li et al. (CVPR 2022) and Pumarola et al. (CVPR 2021)
 2. [DyNeRF](https://neural-3d-video.github.io/) Li et al., CVPR 2022
