@@ -138,5 +138,5 @@ submodules/
 .virtual_documents/
 /exp
 wandb/
-/exp_owlii_benchmarking
+/exp_owlii*
 /DATA_ROOT

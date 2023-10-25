@@ -12,4 +12,4 @@ def make(name, config):
     model = models[name](config)
     return model
 
-from . import dysdf, fields, deformation_nets
+from . import dysdf, fields, deformation_nets, samplers

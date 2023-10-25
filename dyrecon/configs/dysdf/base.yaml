@@ -40,6 +40,7 @@ model:
   isosurface:
     resolution: 512
   sampling:
+    name: uniform_sampler
     strategy: balanced
     train_num_rays: 1100 #6144
     n_samples: 256

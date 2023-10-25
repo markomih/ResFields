@@ -17,7 +17,7 @@ conda create -n ResFields python=3.9 -y
 conda activate ResFields
 conda install cudatoolkit=11.6  -y
 pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
-pip install tqdm scikit-image opencv-python configargparse lpips imageio-ffmpeg lpips tensorboard numpy==1.22.4 sk-video trimesh wandb omegaconf pysdf pymcubes matplotlib pytorch-lightning==1.6.5 gdown
+pip install tqdm scikit-image opencv-python configargparse lpips imageio-ffmpeg lpips tensorboard numpy==1.22.4 sk-video trimesh wandb omegaconf pysdf pymcubes matplotlib pytorch-lightning==1.6.5 gdown nerfacc
 ```
 
 Now you can verify that the environment is set up correctly by running a simple experiment of learning a 2D video via a Siren+ResField MLP: 

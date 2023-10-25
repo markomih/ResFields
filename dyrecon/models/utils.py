@@ -268,3 +268,21 @@ def ray_bbox_intersection(bounds, orig, direct, boffset=(-0.01, 0.01)):
     near = d01.min(-1).values
     far = d01.max(-1).values
     return near, far, mask_at_box
+
+from nerfacc import ray_aabb_intersect
+def ray_bbox_intersection_nerfacc(bounds, orig, direct, boffset=(-0.01, 0.01)):
+    ''' Calculate the intersections of rays and the 3d bounding box. 
+    Args:
+        bounds: (2, 3): min, max
+        orig: (N, 3): origin of rays
+        direct: (N, 3): direction of rays
+    return:
+        near (N - points outside the box): the start of the ray inside the box
+        far (N - points outside the box): the end of the ray inside the box
+        mask (N): whether the ray intersects the box
+    '''
+    bounds = bounds + torch.tensor([boffset[0], boffset[1]])[:, None].to(device=orig.device)
+    aabbs = bounds.view(1, -1)
+    near, far, hits = ray_aabb_intersect(orig, direct, aabbs)
+    near, far, hits = near.squeeze(-1), far.squeeze(-1), hits.squeeze(-1)
+    return near[hits], far[hits], hits
