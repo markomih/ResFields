@@ -26,10 +26,11 @@ class DynamicFields(BaseModel):
     def forward(self, pts, pts_time, frame_id, rays_d, alpha_ratio=1.0, estimate_normals=True, estimate_color=True):
         grad_enabled = self.training or estimate_normals
         with torch.inference_mode(not grad_enabled), torch.set_grad_enabled(grad_enabled):  # enable gradient for computing gradients
-            if not self.training:
-                pts = pts.clone()
+            if estimate_normals:
+                if not self.training:
+                    pts = pts.clone()
+                pts.requires_grad_(True)
 
-            pts.requires_grad_(True)
             deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
             if deform_codes is not None:
                 deform_codes = deform_codes.view(-1, 1, deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)

@@ -37,11 +37,11 @@ model:
     resolution: 512
 
   sampling:
-    name: uniform_sampler
+    name: uniform_sampler #importance_sampler
     strategy: balanced
     train_num_rays: 1100 #6144
-    n_samples: 256
-    n_importance: 0
+    n_samples: 128
+    n_importance: 128
     randomized: true
     ray_chunk: ${model.sampling.train_num_rays}
 
