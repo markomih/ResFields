@@ -2,8 +2,9 @@ trial_name: tnerf
 defaults:
   - base.yaml
 model:
-  hyper_net:
-    name: hyper_time_network
-    d_in: 1
-    d_out: 1
-    multires_out: 6
+  dynamic_fields:
+    hyper_net:
+      name: hyper_time_network
+      d_in: 1
+      d_out: 1
+      multires_out: 6

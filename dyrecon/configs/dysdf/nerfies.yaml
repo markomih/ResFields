@@ -2,17 +2,18 @@ trial_name: nerfies
 defaults:
   - base.yaml
 model:
-  deform_dim: 64
-  deform_net:
-    name: deformation_SE3Field
-    d_feature: ${model.deform_dim}
-    d_in: 3
-    multires: 6
+  dynamic_fields:
+    deform_dim: 64
+    deform_net:
+      name: deformation_SE3Field
+      d_feature: ${model.dynamic_fields.deform_dim}
+      d_in: 3
+      multires: 6
 
-    skips: [4,]
-    trunk_depth: 6
-    trunk_width: 128
-    rotation_depth: 0
-    rotation_width: 128
-    pivot_depth: 0
-    pivot_width: 128
+      skips: [4,]
+      trunk_depth: 6
+      trunk_width: 128
+      rotation_depth: 0
+      rotation_width: 128
+      pivot_depth: 0
+      pivot_width: 128

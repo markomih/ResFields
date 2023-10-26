@@ -27,18 +27,15 @@ dataset:
     n_imgs: ${dataset.load_time_steps}
 
 model:
-  name: DySDF
+  name: Renderer
   background: black
-
-  ambient_dim: 0
-  deform_dim: 0
-
   alpha_ratio:
     strategy: interpolated
     max_steps: 50000
 
   isosurface:
     resolution: 512
+
   sampling:
     name: uniform_sampler
     strategy: balanced
@@ -48,42 +45,48 @@ model:
     randomized: true
     ray_chunk: ${model.sampling.train_num_rays}
 
-  deform_net: null
-  hyper_net:
-    name: hyper_time_network
-    d_in: 0
-    d_out: 0
-    multires_out: 0
-
-  sdf_net:
-    name: sdf_network
-    n_frames: 100
-    resfield_layers: []
-    composition_rank: 10
-    d_out: 129
-    d_in_1: 3
-    # d_in_2: 1
-    d_hidden: 128
-    n_layers: 8
-    skip_in: [4]
-    multires: 6
-    multires_topo: 0
-    bias: 0.5
-    scale: 1.0
-    geometric_init: True
-    weight_norm: False
-    inside_outside: False
-  
-  color_net:
-    name: color_network
-    d_hidden: 128
-    n_layers: 1
-    mode: 
-      feature: ${sub:${model.sdf_net.d_out}, 1}
   deviation_net:
     name: laplace_density
     beta_min: 0.0001
     beta: 0.1
+
+  dynamic_fields:
+    name: DynamicFields
+    ambient_dim: 0
+    deform_dim: 0
+
+    deform_net: null
+    hyper_net:
+      name: hyper_time_network
+      d_in: 0
+      d_out: 0
+      multires_out: 0
+
+    sdf_net:
+      name: sdf_network
+      n_frames: 100
+      resfield_layers: []
+      composition_rank: 10
+      d_out: 129
+      d_in_1: 3
+      # d_in_2: 1
+      d_hidden: 128
+      n_layers: 8
+      skip_in: [4]
+      multires: 6
+      multires_topo: 0
+      bias: 0.5
+      scale: 1.0
+      geometric_init: True
+      weight_norm: False
+      inside_outside: False
+    
+    color_net:
+      name: color_network
+      d_hidden: 128
+      n_layers: 1
+      mode: 
+        feature: ${sub:${model.dynamic_fields.sdf_net.d_out}, 1}
 
 system:
   name: dysdf_system
@@ -112,6 +115,6 @@ trainer:
   max_steps: 400000
   log_every_n_steps: 100
   num_sanity_val_steps: 0
-  val_check_interval: 10000 #10000
+  val_check_interval: 1000 #10000
   # limit_val_batches: 2 #0.06 # Note: this causes issues in pl 1.6.5
   enable_progress_bar: true

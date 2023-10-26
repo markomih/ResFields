@@ -5,8 +5,14 @@ from .base import BaseModel
 
 class Sampler(BaseModel):
     def setup(self):
-        return super().setup()
-    
+        self._stratified = self.config.get('stratified', True)
+
+    @property
+    def stratified(self):
+        if self.training:
+            return self._stratified
+        return False
+
     def compute_z_vals(self, **kwargs):
         raise NotImplementedError
 
@@ -16,14 +22,8 @@ class Sampler(BaseModel):
 @models.register('uniform_sampler')
 class UniformSampler(Sampler):
     def setup(self):
+        super().setup()
         self.n_samples = self.config.n_samples
-        self._stratified = self.config.get('stratified', True)
-
-    @property
-    def stratified(self):
-        if self.training:
-            return self._stratified
-        return False
 
     def compute_t_vals(self, device):
         t_vals = torch.linspace(0., 1., steps=self.n_samples+1, device=device)
@@ -39,7 +39,6 @@ class UniformSampler(Sampler):
             near: Tensor with shape (n_rays).
             far: Tensor with shape (n_rays).
         """
-        # near, far = rays[..., 6:7], rays[..., 7:8]
         z_vals = near.view(-1, 1) + (far - near).view(-1, 1) * t_vals.view(1, -1) # n_rays, n_samples
         return z_vals
         

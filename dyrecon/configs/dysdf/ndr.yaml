@@ -2,29 +2,30 @@ trial_name: ndr
 defaults:
   - base.yaml
 model:
-  deform_dim: 64
-  deform_net:
-    name: deformation_NDR
-    d_feature: ${model.deform_dim}
-    d_in: 3
-    d_out_1: 1
-    d_out_2: 3
-    n_blocks: 3
-    d_hidden: 128
-    n_layers: 1
-    skip_in: []
-    multires: 6
-    weight_norm: True
+  dynamic_fields:
+    deform_dim: 64
+    deform_net:
+      name: deformation_NDR
+      d_feature: ${model.dynamic_fields.deform_dim}
+      d_in: 3
+      d_out_1: 1
+      d_out_2: 3
+      n_blocks: 3
+      d_hidden: 128
+      n_layers: 1
+      skip_in: []
+      multires: 6
+      weight_norm: True
 
-  hyper_net:
-    name: hyper_topo_network
-    d_feature: ${model.deform_dim}
-    d_in: 3
-    d_out: 2
-    multires_out: 6
-    d_hidden: 64
-    n_layers: 7
-    skip_in: [5]
-    multires: 6
-    bias: 0.0
-    weight_norm: False
+    hyper_net:
+      name: hyper_topo_network
+      d_feature: ${model.dynamic_fields.deform_dim}
+      d_in: 3
+      d_out: 2
+      multires_out: 6
+      d_hidden: 64
+      n_layers: 7
+      skip_in: [5]
+      multires: 6
+      bias: 0.0
+      weight_norm: False

@@ -4,10 +4,10 @@ import torch.nn.functional as F
 
 from models.base import BaseModel
 from models.utils import chunk_batch_levels
-from models.utils import ray_bbox_intersection, extract_geometry, ray_bbox_intersection_nerfacc
+from models.utils import extract_geometry, ray_bbox_intersection_nerfacc
 
-@models.register('DySDF')
-class DySDF(BaseModel):
+@models.register('Renderer')
+class Renderer(BaseModel):
     def setup(self):
         # self.n_importance = self.config.sampling.n_importance
         self.ray_chunk = self.config.sampling.ray_chunk
@@ -17,32 +17,8 @@ class DySDF(BaseModel):
         self.sampler = models.make(self.config.sampling.name, self.config.sampling)
         
         self.register_buffer('scene_aabb', torch.as_tensor(self.config.metadata.scene_aabb, dtype=torch.float32))
-        
-
-        # create networks
-        self.ambient_dim = self.config.get('ambient_dim', 0)
-        self.deform_dim = self.config.get('deform_dim', 0) 
-
-        if self.ambient_dim > 0:
-            self.register_parameter('ambient_codes', torch.nn.Parameter(torch.randn(self.n_frames, self.ambient_dim)))
-        else:
-            self.ambient_codes = None
-
-        if self.deform_dim > 0:
-            self.deform_codes = torch.nn.Parameter(torch.randn(self.n_frames, self.deform_dim))
-        else:
-            self.deform_codes = None
-
-        if self.config.deform_net:
-            self.deform_net = models.make(self.config.deform_net.name, self.config.deform_net)
-        else:
-            self.deform_net = None
-
-        self.hyper_net = models.make(self.config.hyper_net.name, self.config.hyper_net)
-        self.config.sdf_net.d_in_2 = self.hyper_net.out_dim
-        self.config.sdf_net.n_frames = self.n_frames
-        self.sdf_net = models.make(self.config.sdf_net.name, self.config.sdf_net)
-        self.color_net = models.make(self.config.color_net.name, self.config.color_net)
+        self.config.dynamic_fields.metadata = self.config.metadata
+        self.dynamic_fields = models.make(self.config.dynamic_fields.name, self.config.dynamic_fields)
         
         self.alpha_composing = self.config.get('alpha_composing', 'volsdf')
         assert self.alpha_composing in ['volsdf', 'neus', 'nerf'], 'Only support volsdf, neus, nerf'
@@ -58,16 +34,7 @@ class DySDF(BaseModel):
             out = self.forward_(rays, **kwargs)
         else:
             out = chunk_batch_levels(self.forward_, self.ray_chunk, rays, **kwargs)
-        return {
-            **out,
-        }
-
-    def filter_rays(self, rays_o, rays_d, rays_time, frame_id):
-        near, far, mask = ray_bbox_intersection_nerfacc(self.scene_aabb.view(2, 3), rays_o, rays_d) # n_rays
-        rays_o, rays_d, rays_time = rays_o[mask], rays_d[mask], rays_time[mask]
-        if frame_id.numel() > 1:
-            frame_id = frame_id[mask]
-        return rays_o, rays_d, rays_time, frame_id, mask, near, far
+        return {**out,}
 
     def forward_(self, rays, frame_id, **kwargs):
         rays_o, rays_d, rays_time = rays.split([3, 3, 1], dim=-1) #rays[:, 0:3], rays[:, 3:6] # both (N_rays, 3)
@@ -97,42 +64,15 @@ class DySDF(BaseModel):
 
         return dict(coarse=to_ret)
 
-    def _query_sdf(self, pts, frame_id, time_step):
-        # pts: Tensor with shape (B, n_pts, 3). Dtype=float32.
-        # frame_id: Tensor with shape (B). Dtype=long.
-        # time_step: Tensor with shape (B,1). Dtype=float32.
-        _deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
-        if _deform_codes is not None:
-            deform_codes = _deform_codes.view(-1, 1, _deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
-        else: 
-            deform_codes = _deform_codes
-
-        pts_time = time_step[:, None, :].expand(-1, pts.shape[1], -1)
-        pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
-        hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
-            
-        sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=time_step, frame_id=frame_id)[..., :1]
-        sdf = sdf.squeeze()
-        return sdf
 
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        _deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
 
         def _query_sdf(pts):
             # pts: Tensor with shape (n_pts, 3). Dtype=float32.
             pts = pts.view(1, -1, 3).to(frame_id.device)
-            deform_codes = None
-            if _deform_codes is not None:
-                deform_codes = _deform_codes.view(-1, 1, _deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
-
             pts_time = torch.full_like(pts[..., :1], time_step)
-
-            pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
-            hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
-                
-            sdf = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=time_step, frame_id=frame_id)[..., :1]
-            sdf = sdf.squeeze()
+            sdf = self.dynamic_fields(pts, pts_time, frame_id, None, alpha_ratio=self.alpha_ratio, estimate_normals=False, estimate_color=False)['sdf'].squeeze().clone()
 
             # sdf = self.sdf_network.sdf(pts_canonical, ambient_coord, self.alpha_ratio, frame_id=time_step)
             fill_value = 0.0
@@ -172,31 +112,8 @@ class DySDF(BaseModel):
         if frame_id.numel() == 1:
             rays_time = rays_time.view(-1)[0]
 
-        # Forward through networks
-        with torch.inference_mode(False), torch.enable_grad():  # enable gradient for computing gradients
-            if not self.training:
-                pts = pts.clone()
-
-            pts.requires_grad_(True)
-            deform_codes = self.deform_codes[frame_id] if self.deform_codes is not None else None
-            if deform_codes is not None:
-                deform_codes = deform_codes.view(-1, 1, deform_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
-            ambient_codes = self.ambient_codes[frame_id] if self.ambient_codes is not None else None
-            if ambient_codes is not None:
-                ambient_codes = ambient_codes.view(-1, 1, ambient_codes.shape[-1]).expand(pts.shape[0], pts.shape[1], -1)
-
-            pts_canonical = pts if self.deform_net is None else self.deform_net(deform_codes, pts, self.alpha_ratio, pts_time)
-            hyper_coord = self.hyper_net(deform_codes, pts, pts_time, self.alpha_ratio)
-
-            sdf_nn_output = self.sdf_net(pts_canonical, hyper_coord, self.alpha_ratio, input_time=rays_time.squeeze(-1), frame_id=frame_id.squeeze(-1))
-            sdf, feature_vector = sdf_nn_output[..., :1], sdf_nn_output[..., 1:] # (n_rays, n_samples, 1), (n_rays, n_samples, F)
-
-            if self.estimate_normals:
-                gradients_o =  torch.autograd.grad(outputs=sdf, inputs=pts, grad_outputs=torch.ones_like(sdf, requires_grad=False, device=sdf.device), create_graph=True, retain_graph=True, only_inputs=True)[0]
-            else:
-                gradients_o = None
-
-        color = self.color_net(feature=feature_vector, point=pts_canonical, ambient_code=ambient_codes, view_dir=rays_d, normal=gradients_o, alpha_ratio=self.alpha_ratio) # n_rays, n_samples, 3
+        out = self.dynamic_fields(pts, pts_time, frame_id, rays_d, alpha_ratio=self.alpha_ratio, estimate_normals=self.estimate_normals, estimate_color=True)
+        sdf, color, normal, gradients_o = out['sdf'], out['color'], out.get('normal', None), out.get('gradients_o', None)
 
         # volume rendering
         weights = self.get_weight(sdf, z_vals) # n_rays, n_samples, 1
@@ -209,7 +126,8 @@ class DySDF(BaseModel):
             to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
 
         if self.estimate_normals:
-            to_ret['normal'][to_ret['ray_mask']] = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
+            # to_ret['normal'][to_ret['ray_mask']] = (F.normalize(gradients_o, dim=-1, p=2) * weights).sum(dim=1) # n_rays, 3
+            to_ret['normal'][to_ret['ray_mask']] = (normal * weights).sum(dim=1) # n_rays, 3
             if self.training:
                 to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
         if self.training:
