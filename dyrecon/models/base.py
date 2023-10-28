@@ -12,7 +12,7 @@ class BaseModel(nn.Module, Updateable):
         self.setup()
         if self.config.get('weights', None):
             self.load_state_dict(torch.load(self.config.weights))
-            self.register_buffer("_dummy", torch.empty(0), persistent=False)
+        self.register_buffer("_dummy", torch.empty(0), persistent=False)
 
     @property
     def device(self) -> torch.device:

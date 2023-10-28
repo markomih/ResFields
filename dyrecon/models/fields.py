@@ -5,6 +5,7 @@ import torch
 import math
 import torch.nn.functional as F
 import models
+from omegaconf.dictconfig import DictConfig
 from models.base import BaseModel
 import resfields
 
@@ -70,21 +71,28 @@ def get_embedder(multires, input_dims=3):
 @models.register('sdf_network')
 class SDFNetwork(BaseModel):
     def setup(self):
-        self.n_frames = self.config.n_frames
+        self.n_frames = self.config.get('n_frames', None)
         self.capacity = self.n_frames
         self.d_out = self.config.d_out
         self.d_in_1 = self.config.d_in_1
-        self.d_in_2 = self.config.d_in_2
+        self.d_in_2 = self.config.get('d_in_2', 0)
         self.d_hidden = self.config.d_hidden
         self.n_layers = self.config.n_layers
         self.skip_in = self.config.skip_in
-        self.multires = self.config.multires
-        self.multires_topo = self.config.multires_topo
-        self.bias = self.config.bias
-        self.scale = self.config.scale
-        self.geometric_init = self.config.geometric_init
-        self.weight_norm = self.config.weight_norm
-        self.inside_outside = self.config.inside_outside
+        self.multires = self.config.get('multires', 0)
+        self.multires_topo = self.config.get('multires_topo', 0)
+        self.bias = self.config.get('bias', 0.0)
+        self.scale = self.config.get('scale', 1.0)
+        self.geometric_init = self.config.get('geometric_init', True)
+        self.weight_norm = self.config.get('weight_norm', False)
+        self.inside_outside = self.config.get('inside_outside', False)
+
+        if self.config.get('pts_encoder', None) is not None:
+            self.pts_encoder = models.make(self.config.pts_encoder.name, self.config.pts_encoder)
+            self.pts_encoder_dim = self.pts_encoder.out_dim
+            self.d_in_2 += self.pts_encoder_dim
+        else:
+            self.pts_encoder = None
 
         self.resfield_layers = self.config.get('resfield_layers', [])
         self.composition_rank = self.config.get('composition_rank', 10)
@@ -164,6 +172,9 @@ class SDFNetwork(BaseModel):
             topo_coord = self.embed_amb_fn(topo_coord, alpha_ratio)
         if topo_coord is not None:
             inputs = torch.cat([inputs, topo_coord], dim=-1)
+        if self.pts_encoder is not None:
+            _enc_pts = self.pts_encoder(inputs, frame_id=frame_id, input_time=input_time)
+            inputs = torch.cat([inputs, _enc_pts], dim=-1)
         x = inputs
         for l in range(0, self.num_layers - 1):
             if l in self.skip_in:
@@ -551,3 +562,61 @@ class NGPMLP(BaseModel):
         if len(coords.shape) == 3:
             output = output.view(B, T, output.shape[-1])
         return output
+
+@models.register('hexplane_encoder')
+class HexPlaneEncoder(BaseModel):
+    """ Encoder from HexPlane@CVPR'23
+    """
+    def setup(self):
+        self.img_resolution = self.config.get('resolution', 256)
+        self.img_channels = self.config.get('channels', 24)
+        self.box_warp = self.config.get('box_warp', 2)
+        self.v2_grad = self.config.get('v2_grad', True)
+        self.geometric_init = self.config.get('geometric_init', True)
+
+        if self.v2_grad:
+            from third_party.ops import grid_sample
+            self.grid_sample = grid_sample.grid_sample_2d
+        else:
+            self.grid_sample = F.grid_sample
+
+        planes = self._init_planes()
+        self.planes = torch.nn.Parameter(planes, requires_grad=True)
+        self.plane_axes = [[0,1], [1,2], [2,0], [0,3], [1,3], [2,3]]
+        self.out_dim = 6*self.img_channels
+
+    def _init_planes(self):
+        xs = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
+        ys = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
+        (ys, xs) = torch.meshgrid(-ys, xs)
+        N = self.img_resolution
+        zs = torch.zeros(N, N)
+        inputx = torch.stack([zs, xs, ys]).permute(1, 2, 0).reshape(N ** 2, 3)
+        inputy = torch.stack([xs, zs, ys]).permute(1, 2, 0).reshape(N ** 2, 3)
+        inputz = torch.stack([xs, ys, zs]).permute(1, 2, 0).reshape(N ** 2, 3)
+        ini_sdf = torch.randn([3, self.img_channels, self.img_resolution, self.img_resolution])
+        if self.geometric_init:
+            sdf_para = SDFNetwork(DictConfig({
+                'd_out': self.img_channels,
+                'd_in_1': 3, 'd_hidden':
+                self.config.d_hidden,
+                'n_layers': 5,
+                'skip_in': [10],
+            }))
+            ini_sdf[0] = sdf_para(inputx).permute(1, 0).reshape(self.img_channels, N, N) # 24,N,N
+            ini_sdf[1] = sdf_para(inputy).permute(1, 0).reshape(self.img_channels, N, N)
+            ini_sdf[2] = sdf_para(inputz).permute(1, 0).reshape(self.img_channels, N, N)
+        planes = ini_sdf.repeat_interleave(2, dim=0) # 1, 6, 24, 256, 256
+        return planes
+
+    def _fuse_feat(self, feat): # [B, N, n_planes, C]
+        return feat.reshape(feat.shape[0], feat.shape[1], -1)
+
+    def forward(self, input_pts, **kwargs):
+        B, N, d = input_pts.shape # [839, 128, 4]
+        assert d == 4, 'Input points should be in space-time coordinates'
+
+        coord = torch.stack([input_pts[..., _ax] for _ax in self.plane_axes]) # [6, B, N, 2]
+        sampled_features = self.grid_sample(self.planes, coord) # [6, C, B, N]
+        sampled_features  =self._fuse_feat(sampled_features.permute(2,3,0,1)) # -> [B, N, F]
+        return sampled_features

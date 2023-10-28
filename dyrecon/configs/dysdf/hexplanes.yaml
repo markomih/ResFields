@@ -1,0 +1,28 @@
+trial_name: hexplanes
+defaults:
+  - base.yaml
+model:
+  dynamic_fields:
+    hyper_net:
+      name: hyper_time_network
+      d_in: 1
+      d_out: 1
+      multires_out: 0
+
+    sdf_net:
+      n_layers: 4
+      multires: 0
+
+      pts_encoder:
+        name: hexplane_encoder
+        d_hidden: ${model.dynamic_fields.sdf_net.d_hidden}
+        resolution: 150
+        channels: 16
+        box_warp: 3
+        n_frames: ${n_frames}
+        time_channels: ${n_frames}
+        inside_outside: true
+
+system:
+  loss:
+    tv_reg: [5000, 10.0]
