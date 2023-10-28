@@ -37,13 +37,16 @@ model:
     resolution: 512
 
   sampling:
-    name: uniform_sampler #importance_sampler
+    name: uniform_sampler #importance_sampler or proposal_sampler
     strategy: balanced
     train_num_rays: 1100 #6144
     n_samples: 128
     n_importance: 128
     randomized: true
+    prop_samples: [128]
     ray_chunk: ${model.sampling.train_num_rays}
+    prop_net:
+      model: ${model.dynamic_fields}
 
   deviation_net:
     name: laplace_density
@@ -52,6 +55,7 @@ model:
 
   dynamic_fields:
     name: DynamicFields
+    n_frames: ${dataset.load_time_steps}
     ambient_dim: 0
     deform_dim: 0
 
@@ -64,7 +68,7 @@ model:
 
     sdf_net:
       name: sdf_network
-      n_frames: 100
+      n_frames: ${dataset.load_time_steps}
       resfield_layers: []
       composition_rank: 10
       d_out: 129
@@ -115,6 +119,6 @@ trainer:
   max_steps: 400000
   log_every_n_steps: 100
   num_sanity_val_steps: 0
-  val_check_interval: 1000 #10000
+  val_check_interval: 1000 #10000 # TODO: fix this for pub 
   # limit_val_batches: 2 #0.06 # Note: this causes issues in pl 1.6.5
   enable_progress_bar: true

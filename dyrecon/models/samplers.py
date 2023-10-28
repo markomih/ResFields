@@ -2,11 +2,8 @@ import torch
 from nerfacc.data_specs import RayIntervals
 from nerfacc.pdf import importance_sampling
 from nerfacc.volrend import render_transmittance_from_density
-from torch import Tensor
-from typing import Callable, List, Optional, Tuple, Literal
-
+from typing import Literal
 from nerfacc.estimators.prop_net import PropNetEstimator
-from functools import partial
 
 import models
 from .base import BaseModel
@@ -30,7 +27,7 @@ class UniformSampler(Sampler):
         self._n_importance = self.config.get('n_importance', 0)
         self.total_samples = self._n_samples + self._n_importance
 
-    def forward(self, rays_o, rays_d, near, far):
+    def forward(self, n_rays, near, far):
         """ Sample points along the ray.
         Args:
             rays_o: Tensor with shape (n_rays, 3).
@@ -41,11 +38,10 @@ class UniformSampler(Sampler):
             points: Tensor with shape (n_rays, n_samples, 3).
             z_vals: Tensor with shape (n_rays, n_samples).
         """
-        n_rays = rays_o.shape[0]
         cdfs = torch.cat(
             [
-                torch.zeros((n_rays, 1), device=rays_o.device),
-                torch.ones((n_rays, 1), device=rays_o.device),
+                torch.zeros((n_rays, 1), device=self.device),
+                torch.ones((n_rays, 1), device=self.device),
             ],
             dim=-1,
         )
@@ -69,9 +65,9 @@ class ImportanceSampler(Sampler):
         self.n_importance = self._n_importance
         if isinstance(self.n_samples, int):
             self.n_samples = [self.n_samples]
-    
+
     @torch.no_grad()
-    def forward(self, rays_o, rays_d, near, far, prop_sigma_fns, requires_grad=False):
+    def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
         """ Sample points along the ray.
         Args:
             rays_o: Tensor with shape (n_rays, 3).
@@ -83,9 +79,6 @@ class ImportanceSampler(Sampler):
             - **t_starts**: The starts of the samples. Shape (n_rays, num_samples).
             - **t_ends**: The ends of the samples. Shape (n_rays, num_samples).
         """
-        n_rays = rays_o.shape[0]
-        device = rays_o.device
-
         is_list = isinstance(prop_sigma_fns, list)
         if is_list:
             assert len(prop_sigma_fns) == len(self.n_samples), (
@@ -94,8 +87,8 @@ class ImportanceSampler(Sampler):
             )
         cdfs = torch.cat(
             [
-                torch.zeros((n_rays, 1), device=device),
-                torch.ones((n_rays, 1), device=device),
+                torch.zeros((n_rays, 1), device=self.device),
+                torch.ones((n_rays, 1), device=self.device),
             ],
             dim=-1,
         )
@@ -132,6 +125,50 @@ class ImportanceSampler(Sampler):
 
         return t_starts_, t_ends_
 
+@models.register('proposal_sampler')
+class ProposalSampler(Sampler, PropNetEstimator):
+    def setup(self):
+        super().setup()
+        self.prop_samples = self.config.prop_samples
+        self._n_samples = self.config.n_samples
+        self._n_importance = self.config.get('n_importance', 0)
+        self.total_samples = self._n_samples + self._n_importance
+        if isinstance(self.prop_samples, int):
+            self.prop_samples = [self.prop_samples]
+
+    def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
+        t_starts_, t_ends_ = self.sampling(
+            prop_sigma_fns=prop_sigma_fns,
+            prop_samples=self.prop_samples,
+            num_samples=self.total_samples,
+            # rendering options
+            n_rays=n_rays,
+            near_plane=near,
+            far_plane=far,
+            sampling_type=self.sampling_type,
+            # training options
+            stratified=self.stratified,
+            requires_grad=requires_grad,
+        )
+        return t_starts_, t_ends_
+    
+    def requires_grad_fn(self, target: float = 5.0, num_steps: int = 1000):
+        # the proposal network is increasingly training less frequently until `num_steps`, 
+        # when it levels out to training every `target` step
+        schedule = lambda s: min(s / num_steps, 1.0) * target
+
+        steps_since_last_grad = 0
+
+        def proposal_requires_grad_fn(step: int) -> bool:
+            nonlocal steps_since_last_grad
+            target_steps_since_last_grad = schedule(step)
+            requires_grad = steps_since_last_grad > target_steps_since_last_grad
+            if requires_grad:
+                steps_since_last_grad = 0
+            steps_since_last_grad += 1
+            return requires_grad
+
+        return proposal_requires_grad_fn
 
 def _transform_stot(
     transform_type: Literal["uniform", "lindisp"],

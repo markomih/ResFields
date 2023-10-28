@@ -1,3 +1,4 @@
+from functools import partial
 import torch
 import models
 import torch.nn.functional as F
@@ -14,7 +15,11 @@ class Renderer(BaseModel):
         self.alpha_ratio = 1.0
         self.n_frames = self.config.metadata.n_frames
         self.sampler = models.make(self.config.sampling.name, self.config.sampling)
-        
+        if 'proposal' in self.config.sampling.name:
+            # create prop net
+            prop_net_cfg = self.config.sampling.prop_net
+            self.prop_net = models.make(prop_net_cfg.model.name, prop_net_cfg.model)
+
         self.register_buffer('scene_aabb', torch.as_tensor(self.config.metadata.scene_aabb, dtype=torch.float32))
         self.config.dynamic_fields.metadata = self.config.metadata
         self.dynamic_fields = models.make(self.config.dynamic_fields.name, self.config.dynamic_fields)
@@ -26,6 +31,7 @@ class Renderer(BaseModel):
         if self.alpha_composing in ['volsdf', 'neus']:
             self.deviation_net = models.make(self.config.deviation_net.name, self.config.deviation_net)
             self.mc_threshold = 0
+        self.vars_in_forward = {}
 
     def forward(self, rays, **kwargs):
         if self.training:
@@ -93,6 +99,22 @@ class Renderer(BaseModel):
         mesh.export(mesh_path)
         return mesh
 
+    def regularizations(self, out):
+        losses = {}
+        if self.training and 'proposal' in self.config.sampling.name:
+            loss = self.sampler.compute_loss(self.vars_in_forward["trans"], loss_scaler=1.0)
+            losses.update({'loss_proposal': loss})
+            self.sampler.prop_cache = []
+        return losses
+
+    def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False) -> None:
+        if 'proposal' in self.config.sampling.name:
+            self.vars_in_forward["requires_grad"] = self.sampler.requires_grad_fn()(global_step)
+
+    def update_step_end(self, epoch: int, global_step: int) -> None:
+        if 'proposal' in self.config.sampling.name and self.training:
+            self.sampler.prop_cache = []
+
     def sample_points(self, rays_o, rays_d, rays_time, frame_id, near, far):
         """ Render the volume with ray marching.
         Args:
@@ -113,18 +135,28 @@ class Renderer(BaseModel):
             _nr, _ns = tdist.shape[:2]
             return rays_o.view(_nr, 1, 3) + rays_d.view(_nr, 1, 3) * tdist.view(_nr, _ns, 1)
 
-        # n_rays = rays_o.shape[0]
+        n_rays = rays_o.shape[0]
         if 'uniform' in self.config.sampling.name:
-            t_starts, t_ends = self.sampler(rays_o, rays_d, near, far) # n_rays, n_samples
+            t_starts, t_ends = self.sampler(n_rays, near, far) # n_rays, n_samples
         elif 'importance' in self.config.sampling.name:
-            def prop_sigma_fns(_t_starts, _t_ends):
-                _pos = (_t_starts + _t_ends) * 0.5
-                _pts = _tdist2pts(_pos) #rays_o + rays_d * _pos
+            def _prop_sigma_fns(_t_starts, _t_ends):
+                _pts = _tdist2pts((_t_starts + _t_ends) * 0.5) #rays_o + rays_d * _pos
                 _pts_time = rays_time.view(rays_time.shape[0], 1, 1).expand(-1, _pts.shape[1], -1)
                 sdf = self.dynamic_fields(_pts, _pts_time, frame_id, None, alpha_ratio=self.alpha_ratio, estimate_normals=False, estimate_color=False)['sdf']
                 density = self._get_density(sdf)
                 return density.view(_pts.shape[:2])
-            t_starts, t_ends = self.sampler(rays_o, rays_d, near, far, prop_sigma_fns=prop_sigma_fns) # n_rays, n_samples, 3
+            t_starts, t_ends = self.sampler(n_rays, near, far, prop_sigma_fns=_prop_sigma_fns) # n_rays, n_samples, 3
+        elif 'proposal' in self.config.sampling.name:
+            def _prop_sigma_fns(_t_starts, _t_ends, proposal_func):
+                _pts = _tdist2pts((_t_starts + _t_ends) * 0.5) #rays_o + rays_d * _pos
+                _pts_time = rays_time.view(rays_time.shape[0], 1, 1).expand(-1, _pts.shape[1], -1)
+                sdf = proposal_func(_pts, _pts_time, frame_id, None, alpha_ratio=self.alpha_ratio, estimate_normals=False, estimate_color=False)['sdf']
+                density = self._get_density(sdf)
+                return density.view(_pts.shape[:2])
+            # prop_sigma_fns = [partial(_prop_sigma_fns, proposal_func=_prop) for _prop in self.sampler.prop_nets]
+            prop_sigma_fns = [partial(_prop_sigma_fns, proposal_func=self.prop_net)]
+            # t_starts, t_ends = self.sampler(n_rays, near, far, prop_sigma_fns=prop_sigma_fns, requires_grad=self.vars_in_forward["requires_grad"]) # n_rays, n_samples, 3
+            t_starts, t_ends = self.sampler(n_rays, near, far, prop_sigma_fns=prop_sigma_fns, requires_grad=self.vars_in_forward["requires_grad"]) # n_rays, n_samples, 3
         else:
             raise NotImplementedError
         t_positions = (t_starts + t_ends) * 0.5
@@ -155,7 +187,7 @@ class Renderer(BaseModel):
         sdf, color, normal, gradients_o = out['sdf'], out['color'], out.get('normal', None), out.get('gradients_o', None)
 
         # volume rendering
-        weights = self.get_weight(sdf, t_intervals) # n_rays, n_samples, 1
+        weights, trans = self.get_weight(sdf, t_intervals) # n_rays, n_samples, 1
         
         to_ret['rgb'][to_ret['ray_mask']] = (color * weights).sum(dim=1) # n_rays, 3
         to_ret['opacity'][to_ret['ray_mask']] = weights.sum(dim=1) # n_rays, 1
@@ -169,6 +201,10 @@ class Renderer(BaseModel):
             to_ret['normal'][to_ret['ray_mask']] = (normal * weights).sum(dim=1) # n_rays, 3
             if self.training:
                 to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
+
+        if self.training and 'proposal' in self.config.sampling.name:
+            self.vars_in_forward["trans"] = trans.reshape(rays_o.shape[0], -1)
+
         if self.training:
             to_ret['sdf'] = sdf
         return to_ret
@@ -183,14 +219,14 @@ class Renderer(BaseModel):
         # dists = z_vals[..., 1:] - z_vals[..., :-1]
         density = self._get_density(nn_output)
         if self.alpha_composing == 'volsdf':
-            weight = self._get_weight_vol_sdf(density, dists)
+            weight, trans = self._get_weight_vol_sdf(density, dists)
         elif self.alpha_composing == 'neus':
             raise NotImplementedError
         elif self.alpha_composing == 'nerf':
-            weight = self._get_weight_nerf(density, dists)
+            weight, trans = self._get_weight_nerf(density, dists)
         else:
             raise NotImplementedError
-        return weight
+        return weight, trans
     
     def _get_density(self, raw):
         if self.alpha_composing == 'volsdf':
@@ -214,10 +250,10 @@ class Renderer(BaseModel):
         alpha = 1.0 - torch.exp(-density * dists.view(density.shape))
         transmittance = torch.cumprod(torch.cat([torch.ones_like(alpha[:, :1]), 1. - alpha + 1e-7], dim=1), dim=1)[:, :-1] # n_rays, n_samples, 1
         weights = alpha * transmittance
-        return weights
+        return weights, transmittance
 
     def _get_weight_nerf(self, density, dists):
         alpha = 1.0 - torch.exp(-density * dists.view(density.shape))
         transmittance = torch.cumprod(torch.cat([torch.ones_like(alpha[:, :1]), 1. - alpha + 1e-7], dim=1), dim=1)[:, :-1] # n_rays, n_samples, 1
         weights = alpha * transmittance
-        return weights
+        return weights, transmittance

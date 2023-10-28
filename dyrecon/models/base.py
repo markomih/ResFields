@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 from utils.misc import get_rank
-from models.utils import chunk_batch
+from models.utils import chunk_batch, Updateable
 
-class BaseModel(nn.Module):
+class BaseModel(nn.Module, Updateable):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -12,13 +12,21 @@ class BaseModel(nn.Module):
         self.setup()
         if self.config.get('weights', None):
             self.load_state_dict(torch.load(self.config.weights))
-    
+            self.register_buffer("_dummy", torch.empty(0), persistent=False)
+
+    @property
+    def device(self) -> torch.device:
+        return self._dummy.device
+
     def setup(self):
         raise NotImplementedError
     
-    def update_step(self, epoch, global_step):
+    def update_step(self, epoch, global_step, **kwargs):
         pass
-    
+
+    def update_step_end(self, epoch: int, global_step: int) -> None:
+        pass
+
     def log_variables(self):
         return dict()
     # def train(self, mode=True):

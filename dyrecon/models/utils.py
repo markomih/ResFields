@@ -1,4 +1,5 @@
 import gc
+from typing import Any
 from collections import defaultdict
 
 import torch
@@ -10,6 +11,54 @@ import torch.nn.functional as F
 from torch.autograd import Function
 from torch.cuda.amp import custom_bwd, custom_fwd
 from packaging.version import parse as parse_version
+
+class Updateable:
+    def do_update_step(
+        self, epoch: int, global_step: int, on_load_weights: bool = False
+    ):
+        for attr in self.__dir__():
+            if attr.startswith("_"):
+                continue
+            try:
+                module = getattr(self, attr)
+            except:
+                continue  # ignore attributes like property, which can't be retrived using getattr?
+            if isinstance(module, Updateable):
+                module.do_update_step(
+                    epoch, global_step, on_load_weights=on_load_weights
+                )
+        self.update_step(epoch, global_step, on_load_weights=on_load_weights)
+
+    def do_update_step_end(self, epoch: int, global_step: int):
+        for attr in self.__dir__():
+            if attr.startswith("_"):
+                continue
+            try:
+                module = getattr(self, attr)
+            except:
+                continue  # ignore attributes like property, which can't be retrived using getattr?
+            if isinstance(module, Updateable):
+                module.do_update_step_end(epoch, global_step)
+        self.update_step_end(epoch, global_step)
+
+    def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False):
+        # override this method to implement custom update logic
+        # if on_load_weights is True, you should be careful doing things related to model evaluations,
+        # as the models and tensors are not guarenteed to be on the same device
+        pass
+
+    def update_step_end(self, epoch: int, global_step: int):
+        pass
+
+
+def update_if_possible(module: Any, epoch: int, global_step: int) -> None:
+    if isinstance(module, Updateable):
+        module.do_update_step(epoch, global_step)
+
+
+def update_end_if_possible(module: Any, epoch: int, global_step: int) -> None:
+    if isinstance(module, Updateable):
+        module.do_update_step_end(epoch, global_step)
 
 def chunk_batch(func, chunk_size, *args, **kwargs):
     B = None

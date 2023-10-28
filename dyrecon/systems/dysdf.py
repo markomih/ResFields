@@ -34,15 +34,15 @@ class DySDFSystem(BaseSystem):
                 batch[key] = val.squeeze(0).to(self.device)
         if stage in ['train']:
             if self.config.model.background == 'white':
-                self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
+                self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.device)
             elif self.config.model.background == 'black':
-                self.model.background_color = torch.zeros((3,), dtype=torch.float32, device=self.rank)
+                self.model.background_color = torch.zeros((3,), dtype=torch.float32, device=self.device)
             elif self.config.model.background == 'random':
-                self.model.background_color = torch.rand((3,), dtype=torch.float32, device=self.rank)
+                self.model.background_color = torch.rand((3,), dtype=torch.float32, device=self.device)
             else:
                 raise NotImplementedError
         else:
-            self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
+            self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.device)
         if 'rgb' in batch and 'mask' in batch:
             batch['rgb'] = batch['rgb']*batch['mask'][..., None] + self.model.background_color * (1 - batch['mask'][..., None])
         setattr(self.model, 'alpha_ratio', self.alpha_ratio)
@@ -125,9 +125,9 @@ class DySDFSystem(BaseSystem):
 
     def training_step(self, batch, batch_idx):
         out = self(batch)
-        # regularizations = self.model.regularization_loss(batch)
+        regularizations = self.model.regularizations(out)
 
-        losses = dict()
+        losses = regularizations
         self.levels = out.keys()
         for _level in self.levels:
             losses[_level], stats = self._level_fn(batch, out[_level], _level)

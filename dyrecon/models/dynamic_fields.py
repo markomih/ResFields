@@ -7,7 +7,7 @@ from models.base import BaseModel
 @models.register('DynamicFields')
 class DynamicFields(BaseModel):
     def setup(self):
-        self.n_frames = self.config.metadata.n_frames
+        self.n_frames = self.config.n_frames
         
         # create networks
         self.ambient_dim = self.config.get('ambient_dim', 0)

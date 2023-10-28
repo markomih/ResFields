@@ -2,13 +2,13 @@ import numpy as np
 import torch
 import pytorch_lightning as pl
 from utils.misc import get_rank
+from models.utils import Updateable
 
 import models
 from utils.mixins import SaverMixin
 from utils.misc import config_to_primitive
 
-
-class BaseSystem(pl.LightningModule, SaverMixin):
+class BaseSystem(pl.LightningModule, Updateable, SaverMixin):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -16,6 +16,14 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         self.prepare()
         self.model = models.make(self.config.model.name, self.config.model)
         print(self.model)
+
+    @property
+    def true_global_step(self):
+        return self.global_step
+
+    @property
+    def true_current_epoch(self):
+        return self.current_epoch
 
     def prepare(self):
         pass
@@ -63,18 +71,22 @@ class BaseSystem(pl.LightningModule, SaverMixin):
     def on_train_batch_start(self, batch, batch_idx, unused=0):
         self.dataset = self.trainer.datamodule.train_dataloader().dataset
         self.preprocess_data(batch, 'train')
+        self.do_update_step(self.true_current_epoch, self.true_global_step)
 
     def on_validation_batch_start(self, batch, batch_idx, dataloader_idx=0):
         self.dataset = self.trainer.datamodule.val_dataloader().dataset
         self.preprocess_data(batch, 'validation')
-    
+        self.do_update_step(self.true_current_epoch, self.true_global_step)
+
     def on_test_batch_start(self, batch, batch_idx, dataloader_idx=0):
         self.dataset = self.trainer.datamodule.test_dataloader().dataset
         self.preprocess_data(batch, 'test')
+        self.do_update_step(self.true_current_epoch, self.true_global_step)
 
     def on_predict_batch_start(self, batch, batch_idx, dataloader_idx=0):
         self.dataset = self.trainer.datamodule.predict_dataloader().dataset
         self.preprocess_data(batch, 'predict')
+        self.do_update_step(self.true_current_epoch, self.true_global_step)
 
     # on epoch start
     def on_validation_epoch_start(self):
@@ -87,14 +99,20 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         self.predict_step_outputs = []
 
     # on epoch end
+    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
+        self.do_update_step_end(self.true_current_epoch, self.true_global_step)
+
     def on_validation_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
         self.validation_step_outputs.append(outputs)
+        self.do_update_step_end(self.true_current_epoch, self.true_global_step)
 
     def on_test_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
         self.test_step_outputs.append(outputs)
+        self.do_update_step_end(self.true_current_epoch, self.true_global_step)
 
     def on_predict_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
         self.predict_step_outputs.append(outputs)
+        self.do_update_step_end(self.true_current_epoch, self.true_global_step)
     
     def training_step(self, batch, batch_idx):
         raise NotImplementedError
