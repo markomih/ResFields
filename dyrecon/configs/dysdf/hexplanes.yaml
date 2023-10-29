@@ -3,25 +3,35 @@ defaults:
   - base.yaml
 model:
   dynamic_fields:
-    hyper_net:
-      name: hyper_time_network
-      d_in: 1
-      d_out: 1
-      multires_out: 0
-
     sdf_net:
-      n_layers: 4
-      multires: 0
+      d_in_1: 0
+      name: SDFNetworkGrid
+      anneal_trip: one
+      bicubic: false
 
-      pts_encoder:
-        name: hexplane_encoder
-        d_hidden: ${model.dynamic_fields.sdf_net.d_hidden}
-        resolution: 150
+      n_frames: 100
+      resfield_layers: []
+      composition_rank: 10
+      d_out: 129
+      d_hidden: 128
+      n_layers: 3
+      skip_in: [8]
+      multires: 0
+      multires_topo: 0
+      bias: 0.5
+      scale: 1.0
+      geometric_init: True
+      weight_norm: False
+      inside_outside: False
+
+      grid_encoder:
+        name: hexplane_encoder #triplane_encoder
+        resolution: 128
         channels: 16
         box_warp: 3
+        d_hidden: ${model.dynamic_fields.sdf_net.d_hidden}
         n_frames: ${n_frames}
-        time_channels: ${n_frames}
-        inside_outside: true
+
 
 system:
   loss:

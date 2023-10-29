@@ -148,16 +148,7 @@ class DySDFSystem(BaseSystem):
         return []
 
     def validation_step(self, batch, batch_idx, prefix='val'):
-        # start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-        # torch.cuda.synchronize()
-        # start.record()
         out = self(batch) #rays (N, 7), rgb (N,3), depth (N,1)
-        # end.record()
-        # torch.cuda.synchronize()
-        # time_end = start.elapsed_time(end) #time.time() - time_start
-        # print("Inference Time (s): ", time_end/1000.)
-        # print("FPS ", 1./(time_end/1000.))
-        # exit(0)
         W, H = self.dataset.w, self.dataset.h
 
         stats_dict = dict()
@@ -218,6 +209,7 @@ class DySDFSystem(BaseSystem):
         mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
         time_step = self.dataset.frame_id_to_time(frame_id)
         pred_mesh = self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
+        print(mesh_path)
         ch_dist = torch.tensor(0.)
         if len(pred_mesh.vertices) == 0:
             print('Warning: empty mesh')

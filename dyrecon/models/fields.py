@@ -87,13 +87,6 @@ class SDFNetwork(BaseModel):
         self.weight_norm = self.config.get('weight_norm', False)
         self.inside_outside = self.config.get('inside_outside', False)
 
-        if self.config.get('pts_encoder', None) is not None:
-            self.pts_encoder = models.make(self.config.pts_encoder.name, self.config.pts_encoder)
-            self.pts_encoder_dim = self.pts_encoder.out_dim
-            self.d_in_2 += self.pts_encoder_dim
-        else:
-            self.pts_encoder = None
-
         self.resfield_layers = self.config.get('resfield_layers', [])
         self.composition_rank = self.config.get('composition_rank', 10)
         # create nets
@@ -172,9 +165,7 @@ class SDFNetwork(BaseModel):
             topo_coord = self.embed_amb_fn(topo_coord, alpha_ratio)
         if topo_coord is not None:
             inputs = torch.cat([inputs, topo_coord], dim=-1)
-        if self.pts_encoder is not None:
-            _enc_pts = self.pts_encoder(inputs, frame_id=frame_id, input_time=input_time)
-            inputs = torch.cat([inputs, _enc_pts], dim=-1)
+
         x = inputs
         for l in range(0, self.num_layers - 1):
             if l in self.skip_in:
@@ -563,60 +554,170 @@ class NGPMLP(BaseModel):
             output = output.view(B, T, output.shape[-1])
         return output
 
-@models.register('hexplane_encoder')
-class HexPlaneEncoder(BaseModel):
-    """ Encoder from HexPlane@CVPR'23
-    """
+@models.register('SDFNetworkGrid')
+class SDFNetworkGrid(BaseModel):
+    def setup(self):
+        self.grid_encoder = models.make(self.config.grid_encoder.name, self.config.grid_encoder)
+        self.grid_feat_dim = self.grid_encoder.out_dim
+
+        # create the base sdf network
+        self.n_frames = self.config.n_frames
+        self.capacity = self.n_frames
+        self.d_out = self.config.d_out
+        self.d_hidden = self.config.d_hidden
+        self.n_layers = self.config.n_layers
+        self.skip_in = self.config.skip_in
+        self.bias = self.config.bias
+        self.scale = self.config.scale
+        self.geometric_init = self.config.geometric_init
+        self.inside_outside = self.config.inside_outside
+
+
+        self.resfield_layers = self.config.get('resfield_layers', [])
+        self.composition_rank = self.config.get('composition_rank', 10)
+        # create nets
+        dims = [self.grid_feat_dim] + [self.d_hidden for _ in range(self.n_layers)] + [self.d_out]
+
+        self.num_layers = len(dims)
+        self.scale = self.scale
+        for l in range(0, self.num_layers - 1):
+            out_dim = dims[l + 1]
+            _rank = self.composition_rank if l in self.resfield_layers else 0
+            _capacity = self.capacity if l in self.resfield_layers else 0
+            lin = resfields.Linear(dims[l], out_dim, rank=_rank, capacity=_capacity, mode='lookup')
+            if self.geometric_init:
+                torch.nn.init.constant_(lin.bias, 0.0)
+                torch.nn.init.normal_(lin.weight, 0.0, np.sqrt(2) / np.sqrt(out_dim))
+                if l == self.num_layers - 2:
+                    if not self.inside_outside:
+                        torch.nn.init.normal_(lin.weight, mean=np.sqrt(np.pi) / np.sqrt(dims[l]), std=0.0001)
+                        torch.nn.init.constant_(lin.bias, -self.bias)
+                    else:
+                        torch.nn.init.normal_(lin.weight, mean=-np.sqrt(np.pi) / np.sqrt(dims[l]), std=0.0001)
+                        torch.nn.init.constant_(lin.bias, self.bias)
+            setattr(self, "lin" + str(l), lin)
+        self.activation = nn.Softplus(beta=100)
+
+    def forward(self, input_pts, topo_coord=None, alpha_ratio=1.0, input_time=None, frame_id=None):
+        """
+            Args:
+                input_pts: Tensor of shape (n_rays, n_samples, d_in_1)
+                topo_coord: Optional tensor of shape (n_rays, n_samples, d_in_2)
+                alpha_ratio (float): decay ratio of positional encoding
+                input_time: Optional tensor of shape (n_rays, n_rays)
+                # frame_id: Optional tensor of shape (n_rays)
+        """
+        inputs = self.grid_encoder(input_pts=input_pts, alpha_ratio=alpha_ratio, input_time=input_time, frame_id=frame_id)
+        x = inputs
+        for l in range(0, self.num_layers - 1):
+            if l in self.skip_in:
+                x = torch.cat([x, inputs], -1) / np.sqrt(2)
+            lin = getattr(self, "lin" + str(l))
+            x = lin(x, input_time=input_time, frame_id=frame_id)
+            if l < self.num_layers - 2:
+                x = self.activation(x)
+        sdf = (x[..., :1] / self.scale)
+        out = torch.cat([sdf, x[..., 1:]], dim=-1)
+        return out
+
+@models.register('triplane_encoder')
+class TriPlaneEncoder(BaseModel):
     def setup(self):
         self.img_resolution = self.config.get('resolution', 256)
         self.img_channels = self.config.get('channels', 24)
-        self.box_warp = self.config.get('box_warp', 2)
-        self.v2_grad = self.config.get('v2_grad', True)
+        self.d_hidden = self.config.get('d_hidden', 256)
+        self.fuse_mode = self.config.get('fuse_mode', 'cat')
         self.geometric_init = self.config.get('geometric_init', True)
 
+        self.v2_grad = self.config.get('v2_grad', True)
+        self.grid_sample = F.grid_sample
         if self.v2_grad:
             from third_party.ops import grid_sample
             self.grid_sample = grid_sample.grid_sample_2d
+
+        self.register_parameter('planes', torch.nn.Parameter(self._triplane_init()))
+        self.axis = [[0,1], [1,2], [2,0]] # xy, yz, zx
+
+    @property
+    def n_planes(self):
+        return self.planes.shape[0]
+
+    @property
+    def out_dim(self):
+        if self.fuse_mode == 'cat':
+            return self.n_planes*self.img_channels
+        elif self.fuse_mode in ['add', 'mean']:
+            return self.img_channels
         else:
-            self.grid_sample = F.grid_sample
-
-        planes = self._init_planes()
-        self.planes = torch.nn.Parameter(planes, requires_grad=True)
-        self.plane_axes = [[0,1], [1,2], [2,0], [0,3], [1,3], [2,3]]
-        self.out_dim = 6*self.img_channels
-
-    def _init_planes(self):
-        xs = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
-        ys = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
-        (ys, xs) = torch.meshgrid(-ys, xs)
-        N = self.img_resolution
-        zs = torch.zeros(N, N)
-        inputx = torch.stack([zs, xs, ys]).permute(1, 2, 0).reshape(N ** 2, 3)
-        inputy = torch.stack([xs, zs, ys]).permute(1, 2, 0).reshape(N ** 2, 3)
-        inputz = torch.stack([xs, ys, zs]).permute(1, 2, 0).reshape(N ** 2, 3)
-        ini_sdf = torch.randn([3, self.img_channels, self.img_resolution, self.img_resolution])
-        if self.geometric_init:
-            sdf_para = SDFNetwork(DictConfig({
-                'd_out': self.img_channels,
-                'd_in_1': 3, 'd_hidden':
-                self.config.d_hidden,
-                'n_layers': 5,
-                'skip_in': [10],
-            }))
-            ini_sdf[0] = sdf_para(inputx).permute(1, 0).reshape(self.img_channels, N, N) # 24,N,N
-            ini_sdf[1] = sdf_para(inputy).permute(1, 0).reshape(self.img_channels, N, N)
-            ini_sdf[2] = sdf_para(inputz).permute(1, 0).reshape(self.img_channels, N, N)
-        planes = ini_sdf.repeat_interleave(2, dim=0) # 1, 6, 24, 256, 256
-        return planes
+            raise NotImplementedError
 
     def _fuse_feat(self, feat): # [B, N, n_planes, C]
-        return feat.reshape(feat.shape[0], feat.shape[1], -1)
+        if self.fuse_mode == 'cat':
+            return feat.reshape(feat.shape[0], feat.shape[1], -1)
+        elif self.fuse_mode in ['add', 'mean']:
+            return feat.sum(dim=2)
+        else:
+            raise NotImplementedError
 
-    def forward(self, input_pts, **kwargs):
-        B, N, d = input_pts.shape # [839, 128, 4]
-        assert d == 4, 'Input points should be in space-time coordinates'
+    def _triplane_init(self):
+        if self.geometric_init:
+            # get query points
+            zs = torch.zeros(self.img_resolution, self.img_resolution)
+            xs = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
+            ys = (torch.arange(self.img_resolution) - (self.img_resolution / 2 - 0.5)) / (self.img_resolution / 2 - 0.5)
+            (ys, xs) = torch.meshgrid(-ys, xs)
+            inputx = torch.stack([zs, xs, ys]).permute(1, 2, 0).reshape(self.img_resolution ** 2, 3)
+            inputy = torch.stack([xs, zs, ys]).permute(1, 2, 0).reshape(self.img_resolution ** 2, 3)
+            inputz = torch.stack([xs, ys, zs]).permute(1, 2, 0).reshape(self.img_resolution ** 2, 3)
+            pts = torch.stack((inputx, inputy, inputz), dim=0)
 
-        coord = torch.stack([input_pts[..., _ax] for _ax in self.plane_axes]) # [6, B, N, 2]
+            # geo init
+            proj_hidden = (pts @ torch.randn(3, self.d_hidden)*np.sqrt(2)/np.sqrt(self.d_hidden))
+            proj_out = (proj_hidden @ torch.randn(self.d_hidden, self.img_channels)*np.sqrt(2)/np.sqrt(self.img_channels))
+            plane_init = proj_out.view(3, self.img_resolution, self.img_resolution, self.img_channels).permute(0, 3, 1, 2).clone()
+        else:
+            plane_init = torch.randn([3, self.img_channels, self.img_resolution, self.img_resolution])
+        return plane_init # n_planes, C, H, W
+
+    def forward(self, input_pts, alpha_ratio=1.0, input_time=None, frame_id=None):
+        # B, N, d = input_pts.shape
+        coord = torch.stack([input_pts[..., _ax] for _ax in self.axis]) # [6, B, N, 2]
         sampled_features = self.grid_sample(self.planes, coord) # [6, C, B, N]
-        sampled_features  =self._fuse_feat(sampled_features.permute(2,3,0,1)) # -> [B, N, F]
+        sampled_features = self._fuse_feat(sampled_features.permute(2,3,0,1)) # -> [B, N, F]
         return sampled_features
+
+@models.register('hexplane_encoder')
+class HexPlaneEncoder(TriPlaneEncoder):
+    def setup(self):
+        super().setup()  
+        self.axis.extend([[0,3], [1,3], [2,3]]) # [ xy, yz, zx] + [xt, yt, zt]
+
+    def _triplane_init(self):
+        planes = super()._triplane_init() # 3, C, H, W
+        planes = torch.cat([planes, torch.ones_like(planes)], dim=0) # 6, C, H, W
+        return planes
+
+    @property
+    def out_dim(self):
+        if self.fuse_mode == 'cat':
+            return 3*self.img_channels
+        elif self.fuse_mode in ['add', 'mean']:
+            return self.img_channels
+        else:
+            raise NotImplementedError
+
+    def _fuse_feat(self, feat): # [B, N, n_planes, C]
+        if self.fuse_mode == 'cat':
+            feat = feat[:, :, 0:3, :] * feat[:, :, 3:, :]
+            return feat.reshape(feat.shape[0], feat.shape[1], -1)
+        elif self.fuse_mode in ['add', 'mean']:
+            return feat.sum(dim=2)
+        else:
+            raise NotImplementedError
+
+    def forward(self, input_pts, alpha_ratio=1.0, input_time=None, frame_id=None):
+        B, N, d = input_pts.shape
+        if d == 3 and input_time is not None:
+            input_pts = torch.cat([input_pts, input_time.view(*input_time.shape[:2], 1)*0.8], dim=-1)
+        assert input_pts.shape[-1] == 4, 'Input points should be in space-time coordinates'
+        return super().forward(input_pts, alpha_ratio, input_time, frame_id)
