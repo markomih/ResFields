@@ -5,9 +5,9 @@ import torch
 import math
 import torch.nn.functional as F
 import models
-from omegaconf.dictconfig import DictConfig
 from models.base import BaseModel
 import resfields
+from utils import criterions
 
 class Embedder:
     def __init__(self, **kwargs):
@@ -636,7 +636,11 @@ class TriPlaneEncoder(BaseModel):
             self.grid_sample = grid_sample.grid_sample_2d
 
         self.register_parameter('planes', torch.nn.Parameter(self._triplane_init()))
-        self.axis = [[0,1], [1,2], [2,0]] # xy, yz, zx
+        self.space_axis = [[0,1], [1,2], [2,0]] # xy, yz, zx
+
+    @property
+    def axis(self):
+        return self.space_axis
 
     @property
     def n_planes(self):
@@ -690,7 +694,11 @@ class TriPlaneEncoder(BaseModel):
 class HexPlaneEncoder(TriPlaneEncoder):
     def setup(self):
         super().setup()  
-        self.axis.extend([[0,3], [1,3], [2,3]]) # [ xy, yz, zx] + [xt, yt, zt]
+        self.time_axis = [[0,3], [1,3], [2,3]] # [xt, yt, zt]
+
+    @property
+    def axis(self):
+        return self.space_axis + self.time_axis
 
     def _triplane_init(self):
         planes = super()._triplane_init() # 3, C, H, W
@@ -721,3 +729,11 @@ class HexPlaneEncoder(TriPlaneEncoder):
             input_pts = torch.cat([input_pts, input_time.view(*input_time.shape[:2], 1)*0.8], dim=-1)
         assert input_pts.shape[-1] == 4, 'Input points should be in space-time coordinates'
         return super().forward(input_pts, alpha_ratio, input_time, frame_id)
+
+    def regularizations(self, out):
+        to_ret = super().regularizations(out)
+        if self.training:
+            space_planes, time_planes = self.planes.split([3, 3], dim=0)
+            to_ret['loss_space_tv'] = criterions.compute_plane_tv(space_planes)
+            to_ret['loss_time_l1'] = (1-time_planes).abs().mean()
+        return to_ret

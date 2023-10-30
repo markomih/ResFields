@@ -59,7 +59,7 @@ class DySDFSystem(BaseSystem):
     
     def _parse_loss_weight(self, key):
         loss_val = self.config.system.loss.get(key, 0.0)
-        if isinstance(loss_val, float):
+        if isinstance(loss_val, float) or isinstance(loss_val, int):
             return loss_val
         loss_val, start_iter = loss_val[0], loss_val[1]
         if start_iter > self.global_step:
@@ -122,10 +122,15 @@ class DySDFSystem(BaseSystem):
 
 
         return loss, stats
+    
+    def _get_regularization(self, out):
+        regularizations = self.model.regularizations(out)
+        regularizations = {key: self._parse_loss_weight(key)*val for key, val in regularizations.items()}
+        return regularizations
 
     def training_step(self, batch, batch_idx):
         out = self(batch)
-        regularizations = self.model.regularizations(out)
+        regularizations = self._get_regularization(out)
 
         losses = regularizations
         self.levels = out.keys()

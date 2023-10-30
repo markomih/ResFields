@@ -38,7 +38,12 @@ class BaseModel(nn.Module, Updateable):
     #     return super().eval()
 
     def regularizations(self, out):
-        return {}
+        to_ret = {}
+        for attr in self.__dir__():
+            module = getattr(self, attr)
+            if isinstance(module, BaseModel):
+                to_ret.update(module.regularizations(out))
+        return to_ret
 
     def forward(self, rays, **kwargs):
         if self.training:

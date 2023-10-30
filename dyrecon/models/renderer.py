@@ -100,7 +100,7 @@ class Renderer(BaseModel):
         return mesh
 
     def regularizations(self, out):
-        losses = {}
+        losses = super().regularizations(out)
         if self.training and 'proposal' in self.config.sampling.name:
             loss = self.sampler.compute_loss(self.vars_in_forward["trans"], loss_scaler=1.0)
             losses.update({'loss_proposal': loss})
