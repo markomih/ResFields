@@ -21,12 +21,6 @@ class BaseModel(nn.Module, Updateable):
     def setup(self):
         raise NotImplementedError
     
-    def update_step(self, epoch, global_step, **kwargs):
-        pass
-
-    def update_step_end(self, epoch: int, global_step: int) -> None:
-        pass
-
     def log_variables(self):
         return dict()
     # def train(self, mode=True):
