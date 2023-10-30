@@ -650,18 +650,16 @@ class TriPlaneEncoder(BaseModel):
     def out_dim(self):
         if self.fuse_mode == 'cat':
             return self.n_planes*self.img_channels
-        elif self.fuse_mode in ['add', 'mean']:
+        if self.fuse_mode in ['add', 'mean']:
             return self.img_channels
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def _fuse_feat(self, feat): # [B, N, n_planes, C]
         if self.fuse_mode == 'cat':
             return feat.reshape(feat.shape[0], feat.shape[1], -1)
-        elif self.fuse_mode in ['add', 'mean']:
+        if self.fuse_mode in ['add', 'mean']:
             return feat.sum(dim=2)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def _triplane_init(self):
         if self.geometric_init:
@@ -693,7 +691,7 @@ class TriPlaneEncoder(BaseModel):
 @models.register('hexplane_encoder')
 class HexPlaneEncoder(TriPlaneEncoder):
     def setup(self):
-        super().setup()  
+        super().setup()
         self.time_axis = [[0,3], [1,3], [2,3]] # [xt, yt, zt]
 
     @property
@@ -708,20 +706,22 @@ class HexPlaneEncoder(TriPlaneEncoder):
     @property
     def out_dim(self):
         if self.fuse_mode == 'cat':
+            return self.n_planes*self.img_channels
+        if self.fuse_mode == 'space_cat':
             return 3*self.img_channels
-        elif self.fuse_mode in ['add', 'mean']:
+        if self.fuse_mode in ['add', 'mean']:
             return self.img_channels
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def _fuse_feat(self, feat): # [B, N, n_planes, C]
         if self.fuse_mode == 'cat':
+            return feat.reshape(feat.shape[0], feat.shape[1], -1)
+        if self.fuse_mode == 'space_cat':
             feat = feat[:, :, 0:3, :] * feat[:, :, 3:, :]
             return feat.reshape(feat.shape[0], feat.shape[1], -1)
-        elif self.fuse_mode in ['add', 'mean']:
+        if self.fuse_mode in ['add', 'mean']:
             return feat.sum(dim=2)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(self, input_pts, alpha_ratio=1.0, input_time=None, frame_id=None):
         B, N, d = input_pts.shape
@@ -733,7 +733,11 @@ class HexPlaneEncoder(TriPlaneEncoder):
     def regularizations(self, out):
         to_ret = super().regularizations(out)
         if self.training:
-            space_planes, time_planes = self.planes.split([3, 3], dim=0)
-            to_ret['loss_space_tv'] = criterions.compute_plane_tv(space_planes)
-            to_ret['loss_time_l1'] = (1-time_planes).abs().mean()
+            if self.fuse_mode == 'space_cat':
+                space_planes, time_planes = self.planes.split([3, 3], dim=0)
+                to_ret['loss_space_tv'] = criterions.compute_plane_tv(space_planes)
+                to_ret['loss_time_l1'] = (1-time_planes).abs().mean()
+            else:
+                to_ret['loss_tv'] = criterions.compute_plane_tv(self.planes)
+
         return to_ret

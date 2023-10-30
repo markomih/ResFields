@@ -25,13 +25,14 @@ model:
 
       grid_encoder:
         name: hexplane_encoder #triplane_encoder
+        fuse_mode: space_cat
         resolution: 128
-        channels: 16
-        box_warp: 3
+        channels: 24
         d_hidden: ${model.dynamic_fields.sdf_net.d_hidden}
         n_frames: ${n_frames}
 
 system:
   loss:
     loss_space_tv: [5000, 10.0]
+    loss_tv: [5000, 10.0]
     loss_time_l1: 1000
