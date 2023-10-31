@@ -61,8 +61,8 @@ class UniformSampler(Sampler):
 class ImportanceSampler(Sampler):
     def setup(self):
         super().setup()
-        self.n_samples = self._n_samples
-        self.n_importance = self._n_importance
+        self.n_samples = self.config.n_samples
+        self.n_importance = self.config.n_importance
         if isinstance(self.n_samples, int):
             self.n_samples = [self.n_samples]
 
