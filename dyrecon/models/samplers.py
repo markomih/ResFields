@@ -153,22 +153,7 @@ class ProposalSampler(Sampler, PropNetEstimator):
         return t_starts_, t_ends_
     
     def requires_grad_fn(self, target: float = 5.0, num_steps: int = 1000):
-        # the proposal network is increasingly training less frequently until `num_steps`, 
-        # when it levels out to training every `target` step
-        schedule = lambda s: min(s / num_steps, 1.0) * target
-
-        steps_since_last_grad = 0
-
-        def proposal_requires_grad_fn(step: int) -> bool:
-            nonlocal steps_since_last_grad
-            target_steps_since_last_grad = schedule(step)
-            requires_grad = steps_since_last_grad > target_steps_since_last_grad
-            if requires_grad:
-                steps_since_last_grad = 0
-            steps_since_last_grad += 1
-            return requires_grad
-
-        return proposal_requires_grad_fn
+        return (int(num_steps)+1) % int(target) == 0 
 
 def _transform_stot(
     transform_type: Literal["uniform", "lindisp"],

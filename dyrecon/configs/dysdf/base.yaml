@@ -103,6 +103,7 @@ system:
     dist: 0.0
     depth: 0.0
     sparse: 0.0
+    loss_proposal: 1.0 # if the proposal net is used
   optimizer:
     name: Adam
     args:

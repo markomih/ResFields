@@ -109,7 +109,7 @@ class Renderer(BaseModel):
 
     def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False) -> None:
         if 'proposal' in self.config.sampling.name:
-            self.vars_in_forward["requires_grad"] = self.sampler.requires_grad_fn()(global_step)
+            self.vars_in_forward["requires_grad"] = self.sampler.requires_grad_fn(target=5, num_steps=global_step)
 
     def update_step_end(self, epoch: int, global_step: int) -> None:
         if 'proposal' in self.config.sampling.name and self.training:
