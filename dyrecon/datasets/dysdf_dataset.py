@@ -56,15 +56,23 @@ def get_ray_directions(H, W, K, OPENGL_CAMERA=False):
 
     return camera_dirs
 
-def parse_cam(scale_mats_np, world_mats_np):
+def parse_cam(scale_mats_np, world_mats_np, downscale=1.0):
     intrinsics_all, pose_all = [], []
     for scale_mat, world_mat in zip(scale_mats_np, world_mats_np):
         P = world_mat @ scale_mat
         P = P[:3, :4]
         intrinsics, pose = load_K_Rt_from_P(None, P)
+        if downscale != 1.0:
+            intrinsics[:2] = downscale*intrinsics[:2]
         intrinsics_all.append(torch.from_numpy(intrinsics).float())
         pose_all.append(torch.from_numpy(pose).float())
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
+
+def cv_imread(img_path, downscale=1.0):
+    img = cv.imread(img_path)
+    if downscale != 1.0:
+        img = cv.resize(img, (0, 0), fx=downscale, fy=downscale, interpolation=cv.INTER_AREA)
+    return img
 
 class DySDFDatasetBase():
     def setup(self, config, camera_list, split, load_time_steps=100000):
@@ -77,6 +85,7 @@ class DySDFDatasetBase():
             ret = data_list #if data_ids == -1 else [data_list[i] for i in data_ids]
             return ret[:load_time_steps]
         self.camera_dict = {}
+        self.downscale = config.get('downscale', 1)
         _all_c2w, _all_images, _all_depths, _all_fg_masks, _frame_ids, _directions = [], [], [], [], [], []
         for cam_dir in camera_list:
             data_dir = os.path.join(config.data_root, cam_dir)
@@ -87,18 +96,18 @@ class DySDFDatasetBase():
             _camera_dict = np.load(os.path.join(data_dir, 'cameras_sphere.npz'))
             world_mats_np = _sample([_camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))]) # world_mat is a projection matrix from world to image
             scale_mats_np = _sample([_camera_dict['scale_mat_%d' % idx].astype(np.float32) for idx in range(len(_images_lis))]) # scale_mat: used for coordinate normalization, we assume the scene to render is inside a unit sphere at origin.
-            intrinsics_all, pose_all = parse_cam(scale_mats_np, world_mats_np)
+            intrinsics_all, pose_all = parse_cam(scale_mats_np, world_mats_np, downscale=self.downscale)
 
             images_lis = _sample(_images_lis)
             masks_lis = _sample(sorted(glob(os.path.join(data_dir, 'mask/*.png'))))
 
-            images = torch.from_numpy(np.stack([cv.imread(im_name)[..., ::-1] for im_name in images_lis]) / 256.0)  # [n_images, H, W, 3]
+            images = torch.from_numpy(np.stack([cv_imread(im_name, self.downscale)[..., ::-1] for im_name in images_lis]) / 256.0)  # [n_images, H, W, 3]
             all_c2w = pose_all.float()[:, :3, :4]
             all_images = images.float()
 
             self.has_masks = len(masks_lis) > 0
             if self.has_masks:
-                masks  = torch.from_numpy(np.stack([cv.imread(im_name) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
+                masks  = torch.from_numpy(np.stack([cv_imread(im_name, self.downscale) for im_name in masks_lis]) / 256.0)   # [n_images, H, W, 3]
                 all_fg_masks = (masks > 0)[..., 0].float()
                 all_images = all_images*all_fg_masks[..., None].float()
                 _all_fg_masks.append(all_fg_masks)
@@ -107,7 +116,7 @@ class DySDFDatasetBase():
             self.has_depth = len(depth_lis) > 0
             if self.has_depth:
                 depth_scale = config.get('depth_scale', 1000.)
-                depths_np = np.stack([cv.imread(im_name, cv.IMREAD_UNCHANGED) for im_name in depth_lis]) / depth_scale
+                depths_np = np.stack([cv_imread(im_name, self.downscale) for im_name in depth_lis]) / depth_scale
                 depths_np = depths_np*(1./scale_mats_np[0][0, 0])
                 depths_np[depths_np == 0] = -1. # avoid nan values
                 depths = torch.from_numpy(depths_np.astype(np.float32)).float()
