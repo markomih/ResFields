@@ -24,6 +24,23 @@ class DynamicFields(BaseModel):
         self.color_net = models.make(self.config.color_net.name, self.config.color_net)
     
     def forward(self, pts, pts_time, frame_id, rays_d, alpha_ratio=1.0, estimate_normals=True, estimate_color=True):
+        """ Query the model at the specified points in space and time.
+
+        Args:
+            pts: (n_rays, n_samples, 3)
+            pts_time: (n_rays, n_samples, 1)
+            frame_id: (n_rays)
+            rays_d: (n_rays, n_samples, 3)
+            alpha_ratio (float): alpha ratio for traning
+            estimate_normals (bool): whether to estimate normals
+            estimate_color (bool): whether to estimate color
+        Returns:
+            to_ret (dict): dictionary of outputs
+                sdf: (n_rays, n_samples, 1)
+                color: (n_rays, n_samples, 3)
+                gradients_o: (n_rays, n_samples, 3)
+                normal: (n_rays, n_samples, 3)
+        """
         grad_enabled = self.training or estimate_normals
         with torch.inference_mode(not grad_enabled), torch.set_grad_enabled(grad_enabled):  # enable gradient for computing gradients
             if estimate_normals:

@@ -136,7 +136,7 @@ dmypy.json
 /work_dirs/
 submodules/
 .virtual_documents/
-/exp
+/exp_*
 wandb/
 /exp_owlii*
 /DATA_ROOT

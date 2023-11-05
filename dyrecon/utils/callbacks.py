@@ -4,10 +4,17 @@ import shutil
 from utils.misc import dump_config
 
 # from pytorch_lightning.callbacks.base import Callback
-from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.utilities.rank_zero import rank_zero_only, rank_zero_warn
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 import pytorch_lightning as pl
+
+class CustomModelCheckpoint(ModelCheckpoint):
+    def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
+        # if trainer has attribute save_checkpoint, use it instead
+        if hasattr(trainer.model, "prepare_checkpoint"):
+            trainer.model.prepare_checkpoint()
+        return super()._save_checkpoint(trainer, filepath)
 
 class VersionedCallback(Callback):
     def __init__(self, save_root, version=None, use_version=True):

@@ -12,6 +12,7 @@
         "/work_dir/**": true,
         "/dyrecon/load/**": true,
         "/exp/**": true,
+        "/exp_*/**": true,
         "datasets": true,
     }//,
     // "python.analysis.extraPaths": [

@@ -38,6 +38,12 @@ model:
   isosurface:
     resolution: 512
 
+  fast_render: True
+  grid_sampler:
+    name: grid_sampler
+    n_samples: 256
+    grid_resolution: [64,64,64]
+    
   sampling:
     name: uniform_sampler #importance_sampler or proposal_sampler
     strategy: balanced

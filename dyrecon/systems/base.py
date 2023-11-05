@@ -25,6 +25,10 @@ class BaseSystem(pl.LightningModule, Updateable, SaverMixin):
     def true_current_epoch(self):
         return self.current_epoch
 
+    def prepare_checkpoint(self):
+        """ Called before saving checkpoint. """
+        pass
+
     def prepare(self):
         pass
 
