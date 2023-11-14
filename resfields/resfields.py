@@ -198,3 +198,18 @@ class Linear(torch.nn.Linear):
         if self.rank is not None and self.capacity is not None:
             _str += ', rank={}, capacity={}, compression={}'.format(self.rank, self.capacity, self.compression)
         return _str
+
+if __name__ == "__main__":
+    batch_size = 128
+    n_points = 100
+    F_in, F_out = 20, 30
+    _rank = 10
+    _capacity = 100
+
+    input_x = torch.randn(batch_size, n_points, 20)
+    input_time = torch.randn(batch_size)
+
+    m = Linear(F_in, F_out, rank=_rank, capacity=_capacity, mode='interpolation')
+    output = m(input_x, input_time)
+    print(output.size())
+    # >>> torch.Size([128, 100, 30])

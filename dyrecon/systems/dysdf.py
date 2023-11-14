@@ -207,14 +207,15 @@ class DySDFSystem(BaseSystem):
         if self.trainer.is_global_zero:
             metrics_dict = self._get_metrics_dict(out, prefix)
             return metrics_dict
+        
+    def mesh_path(self, frame_id):
+        file_name = f"{int(frame_id.item()):06d}"
+        return self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
 
     def test_step(self, batch, batch_idx):
         frame_id = batch['frame_id']
-        file_name = f"{int(frame_id.item()):06d}"
-        mesh_path = self.get_save_path(f"meshes/it{self.global_step:06d}/{file_name}.ply")
         time_step = self.dataset.frame_id_to_time(frame_id)
-        pred_mesh = self.model.isosurface(mesh_path, time_step, frame_id, self.config.model.isosurface.resolution)
-        print(mesh_path)
+        pred_mesh = self.model.isosurface(self.mesh_path(frame_id), time_step, frame_id, self.config.model.isosurface.resolution)
         ch_dist = torch.tensor(0.)
         if len(pred_mesh.vertices) == 0:
             print('Warning: empty mesh')
@@ -246,7 +247,19 @@ class DySDFSystem(BaseSystem):
                 idir = f"it{self.global_step:06d}-{prefix}_{_level}"
                 self.save_img_sequence(idir, idir, '(\d+)\.png', save_format='mp4', fps=15)
 
+    def _cache_grid(self, _ds):
+        # _ds = self.trainer.datamodule.train_dataloader().dataset
+        frame_list = torch.unique(_ds.frame_ids)
+        time_list = _ds.frame_id_to_time(frame_list)
+        self.model.cache_grid(frame_list, time_list, self.global_step)
+
+    def prepare_checkpoint(self):
+        self._cache_grid(self.trainer.datamodule.train_dataloader().dataset)
+
     def predict_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            self._cache_grid(self.trainer.datamodule.predict_dataloader().dataset)
+        batch['fast_rendering'] = True
         out = self(batch) #rays (N, 7), rgb (N,3), depth (N,1)
         W, H = self.dataset.w, self.dataset.h
         prefix = 'predict'

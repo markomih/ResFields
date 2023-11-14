@@ -1,10 +1,11 @@
 import torch
+from torch.nn import functional as F
 from nerfacc.data_specs import RayIntervals
 from nerfacc.pdf import importance_sampling
 from nerfacc.volrend import render_transmittance_from_density
 from typing import Literal
-from nerfacc.estimators.prop_net import PropNetEstimator
-
+from nerfacc.estimators.prop_net import PropNetEstimator, _transform_stot
+from nerfacc import OccGridEstimator
 import models
 from .base import BaseModel
 
@@ -25,13 +26,14 @@ class UniformSampler(Sampler):
         super().setup()
         self._n_samples = self.config.n_samples
         self._n_importance = self.config.get('n_importance', 0)
-        self.total_samples = self._n_samples + self._n_importance
+    
+    @property
+    def total_samples(self):
+        return self._n_samples + self._n_importance
 
     def forward(self, n_rays, near, far):
         """ Sample points along the ray.
         Args:
-            rays_o: Tensor with shape (n_rays, 3).
-            rays_d: Tensor with shape (n_rays, 3).
             near: Tensor with shape (n_rays).
             far: Tensor with shape (n_rays).
         Returns:
@@ -57,6 +59,48 @@ class UniformSampler(Sampler):
         t_ends = t_vals[..., 1:]
         return t_starts, t_ends
 
+@models.register('grid_sampler')
+class GridSampler(Sampler):
+    def setup(self):
+        super().setup()
+        self._n_samples = self.config.n_samples
+        self._n_importance = self.config.get('n_importance', 0)
+        self.register_buffer('aabb', torch.as_tensor(self.config.aabb, dtype=torch.float32))
+        self.n_frames = self.config.n_frames
+        grid_resolution = list(self.config.get('grid_resolution', [64, 64, 64]))
+        # create grids
+        self.occ_grid = OccGridEstimator(self.aabb, grid_resolution)
+        self.register_buffer('binaries', self.occ_grid.binaries[None].clone().repeat_interleave(self.n_frames, dim=0).clone())
+        self.register_buffer('occs', self.occ_grid.occs[None].clone().repeat_interleave(self.n_frames, dim=0).clone())
+        self.register_buffer('cache_version', torch.zeros(1, dtype=torch.int32))
+
+    @property
+    def step_size(self):
+        return (self.aabb[3:6] - self.aabb[0:3]).norm() / self.total_samples
+
+    @property
+    def total_samples(self):
+        return self._n_samples + self._n_importance
+    
+    def state_dict(self, *args, **kwargs):
+        return super().state_dict(*args, **kwargs)
+    
+    @torch.no_grad()
+    def update(self, occ_fnc, frame_id, global_step, occ_thre=0):
+        self.occ_grid._update(-1, occ_fnc, occ_thre=occ_thre)
+        self.binaries[frame_id] = self.occ_grid.binaries.clone()
+        self.occs[frame_id] = self.occ_grid.occs.clone()
+        self.cache_version.fill_(global_step)
+
+    def forward(self, rays_o, rays_d, near, far, frame_id):
+        self.occ_grid.occ = self.occs[frame_id]
+        self.occ_grid.binary = self.binaries[frame_id]
+        render_step_size = self.step_size #self.render_step_size[frame_id]
+        # occ_grid = self.occ_grids[frame_id]
+        ray_indices, t_starts, t_ends = self.occ_grid.sampling(rays_o, rays_d, t_min=near, t_max=far, render_step_size=render_step_size)
+
+        return ray_indices, t_starts, t_ends
+
 @models.register('importance_sampler')
 class ImportanceSampler(Sampler):
     def setup(self):
@@ -65,6 +109,10 @@ class ImportanceSampler(Sampler):
         self.n_importance = self.config.n_importance
         if isinstance(self.n_samples, int):
             self.n_samples = [self.n_samples]
+
+    @property
+    def total_samples(self):
+        return self.n_samples + sum(self.n_importance)
 
     @torch.no_grad()
     def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
@@ -132,9 +180,12 @@ class ProposalSampler(Sampler, PropNetEstimator):
         self.prop_samples = self.config.prop_samples
         self._n_samples = self.config.n_samples
         self._n_importance = self.config.get('n_importance', 0)
-        self.total_samples = self._n_samples + self._n_importance
         if isinstance(self.prop_samples, int):
             self.prop_samples = [self.prop_samples]
+
+    @property
+    def total_samples(self):
+        return self._n_samples + self._n_importance
 
     def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
         t_starts_, t_ends_ = self.sampling(
@@ -154,19 +205,3 @@ class ProposalSampler(Sampler, PropNetEstimator):
     
     def requires_grad_fn(self, target: float = 5.0, num_steps: int = 1000):
         return (int(num_steps)+1) % int(target) == 0 
-
-def _transform_stot(
-    transform_type: Literal["uniform", "lindisp"],
-    s_vals: torch.Tensor, # n_rays, n_samples
-    t_min: torch.Tensor,
-    t_max: torch.Tensor,
-) -> torch.Tensor:
-    if transform_type == "uniform":
-        _contract_fn, _icontract_fn = lambda x: x, lambda x: x
-    elif transform_type == "lindisp":
-        _contract_fn, _icontract_fn = lambda x: 1 / x, lambda x: 1 / x
-    else:
-        raise ValueError(f"Unknown transform_type: {transform_type}")
-    s_min, s_max = _contract_fn(t_min), _contract_fn(t_max)
-    icontract_fn = lambda s: _icontract_fn(s * s_max + (1 - s) * s_min)
-    return icontract_fn(s_vals)

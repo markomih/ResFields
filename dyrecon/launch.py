@@ -26,7 +26,7 @@ args, extras = parser.parse_known_args()
 import datasets
 import systems
 import pytorch_lightning as pl
-from utils.callbacks import ConfigSnapshotCallback, CustomProgressBar
+from utils.callbacks import ConfigSnapshotCallback, CustomProgressBar, CustomModelCheckpoint
 from utils.misc import load_config    
 
 def main():
@@ -52,7 +52,7 @@ def main():
     config.model.metadata = dm.get_metadata(config.dataset)
 
     callbacks = []
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=config.ckpt_dir,  **config.checkpoint)
+    checkpoint_callback = CustomModelCheckpoint(dirpath=config.ckpt_dir,  **config.checkpoint)
     callbacks.append(checkpoint_callback)
     if args.train:
         callbacks += [
