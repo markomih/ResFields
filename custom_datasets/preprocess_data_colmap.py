@@ -14,7 +14,7 @@ from tqdm import tqdm
 import open3d as o3d
 
 from colmap2neus_utils import gen_poses, gen_cameras_dynamic
-from preprocess_data_charuco import remove_green_spill_from_edges
+from preprocess_data_charuco import remove_green_spill_from_edges, smooth_edges
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Convert a text colmap export to nerf format transforms.json; optionally convert video to images, and optionally run colmap in the first place.")
@@ -32,9 +32,6 @@ def parse_args():
 
 
     parser.add_argument("--run_make_dataset", action="store_true", help="Run make_dataset.py on the new images.")
-    parser.add_argument("--begin_frame", type=int, default=0, help="Frame number to begin reading from.")
-    parser.add_argument("--end_frame", type=int, default=-1, help="Frame number to stop reading at.")
-    parser.add_argument("--by_step", type=int, default=33333, help="Step size between frames to read.")
     parser.add_argument("--extracted_images_folder", type=str, help="Folder path to save the extracted images.")
 
     args = parser.parse_args()
@@ -98,128 +95,10 @@ def run_initial_colmap(args):
 
 
 
-def read_video_mkv_old(filename, 
-                   begin_frame, 
-                   end_frame, 
-                   by_step, 
-                   out_folder,
-                   file_pattern="video_4_frame_"):
-    # Create a reader object for the Azure Kinect MKV file
-    reader = o3d.io.AzureKinectMKVReader()
-    
-    # Open the file using the reader
-    if not reader.open(filename):
-        print("Failed to open the file:", filename)
-        return
-
-
-    # Create the output folder (either it was just deleted, or it never existed)
-    if not os.path.exists(out_folder):
-        print('Creating folder: ', out_folder)
-        os.makedirs(out_folder)
-        os.makedirs(os.path.join(out_folder, "depth"))
-        os.makedirs(os.path.join(out_folder, "rgb"))
-        os.makedirs(os.path.join(out_folder, "mask"))
-
-
-    splits = filename.split("/")
-    directory = "/".join(splits[:-1])
-    video_file_name = splits[-1].split(".")[0]
-
-    mask_directory = f'{directory}/masks/{video_file_name}'
-
-    masks = sorted(glob(f'{mask_directory}/*.png'))
-
-    num_frames = reader.get_metadata().stream_length_usec // (by_step + 1/3)
-    # Seek and read frames from begin_frame to end_frame with by_step step
-    for mask_num, ith_frame in tqdm(enumerate(range(begin_frame, end_frame, by_step))):
-    # for mask_num, ith_frame in tqdm(enumerate(len(num_frames))):
-        # Seek to the ith_frame
-        # reader.seek_timestamp(ith_frame)
-        rgbd = reader.next_frame()
-
-        i = 1
-        while reader.is_eof() != True:
-            if rgbd is None:
-                reader.seek_timestamp(int(ith_frame)+i)
-                rgbd = reader.next_frame()
-                i = i + 1000
-                print(f"Failed to extract frame {ith_frame+i} from {filename}")
-            else:
-                break
-
-        # Get the RGBD image for the ith_frame
-        rgbd = reader.next_frame()
-        if rgbd is None:
-            if(reader.is_eof()):
-                print("Reached end of file")
-                break
-            print(f"Failed to extract frame {ith_frame} from {filename}")
-            reader.close()
-            continue
-
-        # Save the color image of the ith_frame
-        digits_len = len(str(end_frame))
-        color_filename = os.path.join(out_folder, f"rgb/{file_pattern}{str(ith_frame).zfill(digits_len)}.png")
-        mask_filename = os.path.join(out_folder, f"mask/{file_pattern}{str(ith_frame).zfill(digits_len)}.png")
-
-
-
-
-        print(f"Saved rgb image of microsecond {ith_frame+i} to {color_filename}")
-
-        # combine mask and color image
-        if('charuco' in filename):
-            image_shape = rgbd.color.shape
-            mask = np.ones((image_shape[0], image_shape[1])).astype(np.bool_)          
-        else:
-            mask = cv2.imread(masks[mask_num], flags=-1)
-            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 180
-
-
-        color_image = np.array(rgbd.color)
-        # color_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
-        color_image[mask == 0] = 0
-
-        # remove green spill from edges
-        # color_image = remove_green_spill_from_edges(color_image, mask)
-
-
-        # color_filename = os.path.join(out_folder, f"rgb/{file_pattern}{ith_frame}.png")
-        # o3d.io.write_image(color_filename, rgbd.color)
-        # o3d.io.write_image(color_filename, color_image)
-        # o3d.io.write_image(mask_filename, mask.astype(np.uint8)*255)
-
-
-        cv2.imwrite(color_filename, color_image)
-        cv2.imwrite(mask_filename, mask.astype(np.uint8)*255)
-
-        
-        
-        # Save the depth image of the ith_frame
-        if(hasattr(rgbd, 'depth')):
-            depth_filename = os.path.join(out_folder, f"depth/{file_pattern}{str(ith_frame).zfill(digits_len)}.png")
-
-            depth_image = np.array(rgbd.depth)
-
-            depth_image[mask==0] = 0
-
-            # o3d.io.write_image(depth_filename, depth_image)
-            cv2.imwrite(depth_filename, depth_image.astype(np.uint16))
-        else:
-            print(f"Failed to extract depth frame {ith_frame} from {filename}")
-            raise Exception("Depth frame extraction failed")
-
-
-
-    # Close the reader
-    reader.close()
-
-
 def read_video_mkv(filename,
-                     begin_frame,
-                        end_frame,
-                        by_step,
+                    #  begin_frame,
+                        # end_frame,
+                        # by_step,
                         out_folder,
                         file_pattern="video_4_frame_", 
                         last_frame=-1):
@@ -247,10 +126,10 @@ def read_video_mkv(filename,
 
 
     # ffmpeg -i {filename} -map 0:0 {out_folder}/rgb/{file_pattern}_%04d.png
-    do_system(f"ffmpeg -i {filename} -map 0:0 {out_folder}/rgb/{file_pattern}_%04d.png")
+    do_system(f"ffmpeg -i {filename} -map 0:0 {out_folder}/rgb/{file_pattern}%04d.png")
 
     # ffmpeg -i {filename} -map 0:1 {out_folder}/depth/{file_pattern}_%04d.png
-    do_system(f"ffmpeg -i {filename} -map 0:1 {out_folder}/depth/{file_pattern}_%04d.png")
+    do_system(f"ffmpeg -i {filename} -map 0:1 {out_folder}/depth/{file_pattern}%04d.png")
 
     rgb_images = sorted(glob(f'{out_folder}/rgb/*.png'))
     depth_images = sorted(glob(f'{out_folder}/depth/*.png'))
@@ -268,6 +147,7 @@ def read_video_mkv(filename,
             depth = cv2.imread(depth_images[ith_frame], flags=-1)
         except IndexError:
             print('IndexError, finishing on frame: ', ith_frame)
+            ith_frame = ith_frame - 1
             break
         # read mask image
         mask = cv2.imread(masks[ith_frame], flags=-1)
@@ -280,9 +160,11 @@ def read_video_mkv(filename,
         else:
             mask = cv2.imread(masks[ith_frame], flags=-1)
             if(len(mask.shape) == 3 and mask.shape[2] == 3):
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 180
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 0
+            elif(len(mask.shape) == 3 and mask.shape[2] == 4):
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGRA2GRAY) > 0
             else:
-                mask = mask > 180
+                mask = mask > 0
             # mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 180
 
         color_image = np.array(rgb)
@@ -290,7 +172,13 @@ def read_video_mkv(filename,
         color_image[mask == 0] = 0
 
         # remove green spill from edges
-        color_image = remove_green_spill_from_edges(color_image, mask)
+        # color_image = remove_green_spill_from_edges(color_image, mask)
+        # if('charuco' not in filename):
+        # color_image = smooth_edges(color_image, mask)
+        if('charuco' not in filename):
+            color_image = remove_green_spill_from_edges(color_image, mask)
+            color_image, mask = smooth_edges(color_image, mask)
+
 
         # save color image
         cv2.imwrite(rgb_images[ith_frame], color_image)
@@ -311,12 +199,18 @@ def read_video_mkv(filename,
 def run_transform_colmap2neus(args):
     # find from borders of the scene the number of frames
     # TODO DUSAN: assume it's 
-    begin_frame = args.begin_frame
-    end_frame = args.end_frame
-    by_step = args.by_step
-    args.neus_frames = len(range(begin_frame, end_frame, by_step))
+    # begin_frame = args.begin_frame
+    # end_frame = args.end_frame
+    # by_step = args.by_step
+    # args.neus_frames = len(range(begin_frame, end_frame, by_step))
 
-    assert args.neus_frames == len(glob(args.extracted_images_folder + f"/cam_0/rgb/*.png")), "Number of frames in the folder doesn't match the number of frames in the video"
+    neus_frames = 100000
+    num_cams = len(glob(args.extracted_images_folder + f"/cam_*"))
+    for i in range(num_cams):
+        neus_frames = min(neus_frames, len(glob(args.extracted_images_folder + f"/cam_{i}/rgb/*.png")))
+    args.neus_frames = neus_frames
+
+    # assert args.neus_frames == len(glob(args.extracted_images_folder + f"/cam_0/rgb/*.png")), "Number of frames in the folder doesn't match the number of frames in the video"
 
     
 
@@ -338,7 +232,7 @@ def run_transform_colmap2neus(args):
         return
     
     # Prompt user
-    choice = input("Do you want to manually create 'sparse_points_interest.ply'? If you say \"no\", we will copy paste sparse_points.ply to sparse_points_interest.ply (yes/no): ").strip().lower()
+    choice = input(f"You current sparse_points.ply file is in {args.input_model_path}_neus/ folder. Do you want to manually create 'sparse_points_interest.ply'? If you say \"no\", we will copy paste sparse_points.ply to sparse_points_interest.ply (yes/no): ").strip().lower()
 
     if choice == 'yes':
         print("Please manually create the 'sparse_points_interest.ply'.")
@@ -374,7 +268,7 @@ if __name__ == '__main__':
 
 
     # DATA_ROOT= "../../../Downloads/green_screen_3/plane/"
-    DATA_ROOT="../../../Downloads/green_screen_5/activities/book_close/"
+    DATA_ROOT="../../../Downloads/green_screen_5/activities/plane/"
 
     static_video_paths = [
         f'{DATA_ROOT}/cam_0.mkv',
@@ -403,18 +297,18 @@ if __name__ == '__main__':
         last_frame = -1
         for video_idx in video_config["static_videos"]:
             last_frame = read_video_mkv(static_video_paths[int(video_idx)], 
-                        args.begin_frame, 
-                        args.end_frame, 
-                        args.by_step, 
+                        # args.begin_frame, 
+                        # args.end_frame, 
+                        # args.by_step, 
                         args.extracted_images_folder + f"/cam_{video_idx}",
                         file_pattern=f"video_{video_idx}_frame_", last_frame=last_frame)
             
             min_num_frames = min(min_num_frames, last_frame)
         for video_idx in video_config["dynamic_videos"]:
             last_frame = read_video_mkv(dynamic_video_paths[int(video_idx) - len(static_video_paths)], 
-                        args.begin_frame, 
-                        args.end_frame, 
-                        args.by_step, 
+                        # args.begin_frame, 
+                        # args.end_frame, 
+                        # args.by_step, 
                         args.extracted_images_folder + f"/cam_{video_idx}",
                         file_pattern=f"video_{video_idx}_frame_",
                         last_frame=last_frame)
@@ -452,7 +346,7 @@ if __name__ == '__main__':
 
 
         backup_images = args.extracted_images_folder
-        backup_begin_frame = args.begin_frame
+        # backup_begin_frame = args.begin_frame
         
         if(choice == 'yes'):
             choice = input("Enter images folder: ").strip().lower()
@@ -470,7 +364,7 @@ if __name__ == '__main__':
         run_initial_colmap(args)
 
         args.extracted_images_folder = backup_images
-        args.begin_frame = backup_begin_frame
+        # args.begin_frame = backup_begin_frame
 
 
 

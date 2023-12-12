@@ -18,7 +18,7 @@ from scipy import ndimage
 from pytorch3d.utils.camera_conversions import opencv_from_cameras_projection
 from PIL import Image
 import time
-
+import sys
 
 
 def parse_args():
@@ -30,9 +30,6 @@ def parse_args():
     parser.add_argument("--run_transform_charuco_calibration2neus", action="store_true", help="Converting calibration format to neus format")
 
     parser.add_argument("--run_make_dataset", action="store_true", help="Run make_dataset.py on the new images.")
-    parser.add_argument("--begin_frame", type=int, default=0, help="Frame number to begin reading from.")
-    parser.add_argument("--end_frame", type=int, default=-1, help="Frame number to stop reading at.")
-    parser.add_argument("--by_step", type=int, default=33333, help="Step size between frames to read.")
     parser.add_argument("--src_dir", type=str, help="Folder path to save the extracted images.")
     parser.add_argument("--ignore_depth", type=int, default=0, help="Ignore depth images.")
 
@@ -146,6 +143,37 @@ def image_to_cloud(img_c, img_d, rgb_cam):
 
   return xyz, rgb, uvd
 
+def smooth_edges(image, mask, sigma=4, erosion_iterations=1
+                 ):
+    # Load the image and the mask
+    # image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+
+
+    # Define a kernel for the erosion operation
+    kernel = np.ones((3,3), np.uint8)
+    
+    # Erode the mask to shrink it
+
+    # eroded_mask = cv2.erode(mask_input, kernel, iterations=erosion_iterations)
+    if(mask.dtype == bool):
+        mask_input = mask.astype(np.uint8)  * 255
+    eroded_mask = cv2.erode(mask_input, kernel, iterations=erosion_iterations)
+    # Apply Gaussian blur to the mask
+    smoothed_mask = cv2.GaussianBlur(eroded_mask, (0,0), sigma)
+
+    # Apply smoothed_mask to image
+    smoothed_image = image.copy()
+    
+    # print(np.unique(smoothed_mask))
+    for i in range(3):
+        smoothed_image[:, :, i] = image[:, :, i] * (smoothed_mask > 0)
+
+    smoothed_image = smoothed_image[:,:,:3]
+
+    return smoothed_image, smoothed_mask
+
 def remove_green_spill_from_edges(img, mask, threshold=0.3, spill_factor=0.5):
 
     blue_channel = img[:, :, 0]
@@ -153,13 +181,13 @@ def remove_green_spill_from_edges(img, mask, threshold=0.3, spill_factor=0.5):
     red_channel = img[:, :, 2]
 
     # threshold = 1.5
-    spill_mask = (green_channel > 1.1 * blue_channel) & (green_channel > 1.1 * red_channel) 
+    spill_mask = (green_channel > 1.2 * blue_channel) & (green_channel > 1.2 * red_channel) 
     
 
-    if(spill_mask.sum() > 10000):
-        result_image = np.zeros_like(img)
-        result_image[spill_mask] = img[spill_mask]
-        Image.fromarray(result_image).show()
+    # if(spill_mask.sum() > 10000):
+        # result_image = np.zeros_like(img)
+        # result_image[spill_mask] = img[spill_mask]
+        # Image.fromarray(result_image).show()
 
 
     
@@ -168,15 +196,15 @@ def remove_green_spill_from_edges(img, mask, threshold=0.3, spill_factor=0.5):
 
 
 
-    # Smooth out edges
-    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, mask = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY)
-    # Define the kernel size for morphological operations
-    kernel_size = 3  # Adjust the kernel size as needed
-    # Optionally, you can apply Gaussian smoothing to further smoothen the edges
-    edge_mask = cv2.GaussianBlur(mask, (kernel_size, kernel_size), 0) == 0
+    # # Smooth out edges
+    # gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # _, mask = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY)
+    # # Define the kernel size for morphological operations
+    # kernel_size = 3  # Adjust the kernel size as needed
+    # # Optionally, you can apply Gaussian smoothing to further smoothen the edges
+    # edge_mask = cv2.GaussianBlur(mask, (kernel_size, kernel_size), 0) == 0
 
-    img[edge_mask, :] = 0
+    # img[edge_mask, :] = 0
 
     return img
 
@@ -420,7 +448,7 @@ def run_calibration_finding(args, calibrations_folder):
         l1_loss = torch.nn.L1Loss()
 
         # for i in range(0, 10000):
-        pbar = tqdm(range(0, 4*25000))
+        pbar = tqdm(range(0, 25000))
         for i in pbar:
             warped_list = []
             loss = 0
@@ -665,9 +693,9 @@ def save_aabb_for_all_timeframes(args, num_views, R, T, data_folder, rgb_cams, d
 
 
 def read_video_mkv(filename,
-                     begin_frame,
-                        end_frame,
-                        by_step,
+                    #  begin_frame,
+                        # end_frame,
+                        # by_step,
                         out_folder,
                         file_pattern="video_4_frame_",
                         downscale_factor=1,
@@ -768,6 +796,7 @@ def read_video_mkv(filename,
             depth = cv2.imread(depth_images[ith_frame], flags=-1)
         except IndexError:
             print('IndexError, finishing on frame: ', ith_frame)
+            ith_frame = ith_frame - 1
             break
         # read mask image
         # mask = cv2.imread(masks[ith_frame], flags=-1)
@@ -781,9 +810,11 @@ def read_video_mkv(filename,
             mask = cv2.imread(masks[ith_frame], flags=-1)
 
             if(len(mask.shape) == 3 and mask.shape[2] == 3):
-                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 180
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) > 0
+            elif(len(mask.shape) == 3 and mask.shape[2] == 4):
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGRA2GRAY) > 0
             else:
-                mask = mask > 180
+                mask = mask > 0
 
         color_image = np.array(rgb)
         # color_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
@@ -792,6 +823,9 @@ def read_video_mkv(filename,
         # remove green spill from edges
         # if('charuco' not in filename):
             # color_image = remove_green_spill_from_edges(color_image, mask)
+        if('charuco' not in filename):
+            color_image = remove_green_spill_from_edges(color_image, mask)
+            color_image, mask = smooth_edges(color_image, mask)
 
         # save color image
         cv2.imwrite(rgb_images[ith_frame], color_image)
@@ -857,12 +891,17 @@ def generate_grid_basis(grid_size=32, n_dims=3, minv=[-1.0, -1.0, -1.0], maxv=[1
     return basis
     
 def run_transform_charuco_calibration2neus(args):
-    begin_frame = args.begin_frame
-    end_frame = args.end_frame
-    by_step = args.by_step
-    args.neus_frames = len(range(begin_frame, end_frame, by_step))
+    # begin_frame = args.begin_frame
+    # end_frame = args.end_frame
+    # by_step = args.by_step
+    # args.neus_frames = len(range(begin_frame, end_frame, by_step))
 
-    assert args.neus_frames == len(glob(args.src_dir + f"/cam_0/rgb/*.png")), "Number of frames in the folder doesn't match the number of frames in the video"
+    neus_frames = 100000
+    num_cams = len(glob(args.src_dir + f"/cam_*"))
+    for i in range(num_cams):
+        neus_frames = min(neus_frames, len(glob(args.src_dir + f"/cam_{i}/rgb/*.png")))
+    args.neus_frames = neus_frames
+    # assert args.neus_frames == len(glob(args.src_dir + f"/cam_0/rgb/*.png")), "Number of frames in the folder doesn't match the number of frames in the video"
 
     # Load R.pt and T.pt
 
@@ -1076,7 +1115,7 @@ def run_transform_charuco_calibration2neus(args):
     ).reshape(-1, 3)
     pcd.points = o3d.utility.Vector3dVector(np.concatenate([np.asarray(pcd.points), aabb_points], 0))
     pcd.colors = o3d.utility.Vector3dVector(np.concatenate([np.asarray(pcd.colors), np.ones([aabb_points.shape[0], 3]) * [0,1,0]], 0))
-    o3d.visualization.draw_geometries([pcd], "(last last) Last Point Cloud that works like shit")
+    o3d.visualization.draw_geometries([pcd], "(last last) Last Point Cloud that works with custom_aabb")
 
     for view_num in range(n_views):
         np.savez(os.path.join(args.src_dir, f'cam_{view_num}/cameras_sphere.npz'), **cam_dict[f'view_{view_num}'])
@@ -1098,7 +1137,7 @@ if __name__ == '__main__':
     # DATA_ROOT = "ginormous_dataset"
     # DATA_ROOT = "plane_dataset"
     # DATA_ROOT= "../../../Downloads/green_screen_3/plane/"
-    DATA_ROOT="../../../Downloads/green_screen_5/activities/book_close/"
+    DATA_ROOT="../../../Downloads/green_screen_5/activities/book/"
     static_video_paths = [
         f'{DATA_ROOT}/cam_0.mkv',
         f'{DATA_ROOT}/cam_1.mkv',
@@ -1124,9 +1163,9 @@ if __name__ == '__main__':
         last_frame = -1
         for video_idx in video_config["static_videos"]:
             last_frame = read_video_mkv(static_video_paths[int(video_idx)], 
-                        args.begin_frame, 
-                        args.end_frame, 
-                        args.by_step, 
+                        # args.begin_frame, 
+                        # args.end_frame, 
+                        # args.by_step, 
                         args.src_dir + f"/cam_{video_idx}",
                         file_pattern=f"video_{video_idx}_frame_",
                         downscale_factor=args.downscale_factor,
@@ -1134,9 +1173,9 @@ if __name__ == '__main__':
             min_num_frames = min(min_num_frames, last_frame)
         for video_idx in video_config["dynamic_videos"]:
             last_frame = read_video_mkv(dynamic_video_paths[int(video_idx) - len(static_video_paths)], 
-                        args.begin_frame, 
-                        args.end_frame, 
-                        args.by_step, 
+                        # args.begin_frame, 
+                        # args.end_frame, 
+                        # args.by_step, 
                         args.src_dir + f"/cam_{video_idx}",
                         file_pattern=f"video_{video_idx}_frame_",
                         downscale_factor=args.downscale_factor,
@@ -1175,7 +1214,7 @@ if __name__ == '__main__':
         choice = input("Do you need to run initial calibration step (i.e. with charuco)? (yes/no)").strip().lower()
 
         backup_images = args.src_dir
-        backup_begin_frame = args.begin_frame
+        # backup_begin_frame = args.begin_frame
         
         if(choice == 'yes'):
             # TODO Dusan: bring back prompts
@@ -1197,7 +1236,7 @@ if __name__ == '__main__':
             run_calibration_finding(args, calibrations_folder=backup_images)
 
         args.src_dir = backup_images
-        args.begin_frame = backup_begin_frame
+        # args.begin_frame = backup_begin_frame
 
 
 
