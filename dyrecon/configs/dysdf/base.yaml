@@ -49,7 +49,7 @@ model:
     strategy: balanced
     train_num_rays: 1100 #6144
     n_samples: 128
-    n_importance: 128
+    n_importance: [128]
     randomized: true
     prop_samples: [128]
     ray_chunk: ${model.sampling.train_num_rays}
