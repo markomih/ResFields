@@ -68,13 +68,13 @@ def parse_cam(scale_mats_np, world_mats_np, downscale=1.0):
         pose_all.append(torch.from_numpy(pose).float())
     return torch.stack(intrinsics_all), torch.stack(pose_all) # [n_images, 4, 4]
 
-def cv_imread(img_path, downscale=1.0, flags=None):
+def cv_imread(img_path, downscale=1.0, flags=None, interpolation=cv.INTER_AREA):
     if flags is None:
         img = cv.imread(img_path)
     else:
         img = cv.imread(img_path, flags)
     if downscale != 1.0:
-        img = cv.resize(img, (0, 0), fx=downscale, fy=downscale, interpolation=cv.INTER_AREA)
+        img = cv.resize(img, (0, 0), fx=downscale, fy=downscale, interpolation=interpolation)
     return img
 
 class DySDFDatasetBase():
@@ -119,7 +119,7 @@ class DySDFDatasetBase():
             self.has_depth = len(depth_lis) > 0
             if self.has_depth:
                 depth_scale = config.get('depth_scale', 1000.)
-                depths_np = np.stack([cv_imread(im_name, self.downscale, flags=cv.IMREAD_UNCHANGED) for im_name in depth_lis]) / depth_scale
+                depths_np = np.stack([cv_imread(im_name, self.downscale, flags=cv.IMREAD_UNCHANGED, interpolation=cv.INTER_NEAREST) for im_name in depth_lis]) / depth_scale
                 depths_np = depths_np*(1./scale_mats_np[0][0, 0])
                 depths_np[depths_np == 0] = -1. # avoid nan values
                 depths = torch.from_numpy(depths_np.astype(np.float32)).float()
