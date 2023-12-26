@@ -112,7 +112,7 @@ class ImportanceSampler(Sampler):
 
     @property
     def total_samples(self):
-        return self.n_samples + sum(self.n_importance)
+        return sum(self.n_samples) + self.n_importance
 
     @torch.no_grad()
     def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
