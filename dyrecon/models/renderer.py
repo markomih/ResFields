@@ -267,10 +267,12 @@ class Renderer(BaseModel):
             to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
 
         if self.estimate_normals:
-            to_ret['normal'][to_ret['ray_mask']] = (normal * weights).sum(dim=1) # n_rays, 3
+            _normal = (normal * weights).sum(dim=1) # n_rays, 3
+            to_ret['normal'][to_ret['ray_mask']] = _normal
             if self.training:
                 to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
-
+                to_ret['angle_error'] = torch.zeros_like(to_ret['opacity'])
+                to_ret['angle_error'][to_ret['ray_mask']] = torch.relu((rays_d[:, 0]*_normal).sum(-1, keepdim=True)) # n_rays, n_samples
         if self.training and 'proposal' in self.config.sampling.name:
             self.vars_in_forward["trans"] = trans.reshape(rays_o.shape[0], -1)
 
