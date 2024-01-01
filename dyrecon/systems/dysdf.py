@@ -102,9 +102,8 @@ class DySDFSystem(BaseSystem):
         if 'sdf' in out and sparse_weight > 0.0:
             rays_o, rays_d, rays_time = batch['rays'].split([3, 3, 1], dim=-1)
             frame_id = batch['frame_id']
-            rnd_pts = torch.zeros(size=(rays_time.shape[0], 128, 3), device=self.device).uniform_(-1, 1)
-            
-            sdf_rnd = self.model._query_sdf(rnd_pts, frame_id, rays_time)
+            rnd_pts = torch.zeros(size=(rays_time.shape[0], 64, 3), device=self.device).uniform_(-1, 1)
+            sdf_rnd = self.model._query_field(pts=rnd_pts, time_step=rays_time, frame_id=frame_id)
             sdf_ray = out['sdf']
             stats["loss_sparse"] = criterions.sparse_loss(sdf_rnd, sdf_ray)
             loss += sparse_weight * stats["loss_sparse"]

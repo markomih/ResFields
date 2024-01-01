@@ -87,10 +87,13 @@ class Renderer(BaseModel):
                 self.grid_sampler.update(query_density_fnc, frame_id, global_step, occ_thre=0.0)
 
     def _query_field(self, pts, time_step, frame_id, fill_outside=False):
-        assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        # pts: Tensor with shape (n_pts, 3). Dtype=float32.
-        pts = pts.view(1, -1, 3).to(self.device)
-        pts_time = torch.full_like(pts[..., :1], time_step)
+        # assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
+        if frame_id.numel() == 1:
+            pts = pts.view(1, -1, 3).to(self.device)
+            pts_time = torch.full_like(pts[..., :1], time_step)
+        else:
+            # pts.shape (B,T,3), pts_time.shape (B,1), frame_id.shape (B)
+            pts_time = time_step.view(pts.shape[0], 1, 1).repeat(1, pts.shape[1], 1)
         sdf = self.dynamic_fields(pts, pts_time, frame_id, None, alpha_ratio=self.alpha_ratio, estimate_normals=False, estimate_color=False)['sdf'].squeeze().clone()
         if fill_outside:
             fill_value = 0.0
