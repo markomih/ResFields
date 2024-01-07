@@ -112,8 +112,8 @@ class Renderer(BaseModel):
 
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
-        bound_max = torch.tensor([ 1.0,  1.0,  1.0], dtype=torch.float32)
+        bound_min = self.scene_aabb.view(-1)[:3].cpu().float()
+        bound_max = self.scene_aabb.view(-1)[3:6].cpu().float()
         mesh = extract_geometry(
             bound_min,
             bound_max,
