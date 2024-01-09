@@ -112,7 +112,7 @@ class ImportanceSampler(Sampler):
 
     @property
     def total_samples(self):
-        return self.n_samples + sum(self.n_importance)
+        return sum(self.n_samples) + sum(self.n_importance)
 
     @torch.no_grad()
     def forward(self, n_rays, near, far, prop_sigma_fns, requires_grad=False):
@@ -160,7 +160,9 @@ class ImportanceSampler(Sampler):
                 trans, _ = render_transmittance_from_density(t_starts, t_ends, sigmas)
                 cdfs = 1.0 - torch.cat([trans, torch.zeros_like(trans[:, :1])], dim=-1)
 
-        intervals, _ = importance_sampling(intervals, cdfs, self.n_importance, self.stratified)
+        # if(type(self.n_importance) != torch.tensor):
+            # self.n_importance = torch.tensor(self.n_importance, dtype=torch.int32).to(cdfs)
+        intervals, _ = importance_sampling(intervals, cdfs, self.n_importance[0], self.stratified)
         t_vals_fine = _transform_stot(
             self.sampling_type, intervals.vals, near, far
         )
