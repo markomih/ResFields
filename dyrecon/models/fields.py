@@ -251,7 +251,7 @@ class ColorNetwork(BaseModel):
             input_encoding.append(ambient_code)
         if 'view' in self.mode:
             if self.embedview_fn is not None:
-                view_dirs = self.embedview_fn(view_dirs, alpha_ratio) # Anneal
+                view_dir = self.embedview_fn(view_dir, alpha_ratio) # Anneal
             input_encoding.append(view_dir)
         if 'normal' in self.mode:
             input_encoding.append(normal)
