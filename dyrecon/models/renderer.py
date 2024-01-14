@@ -87,10 +87,13 @@ class Renderer(BaseModel):
                 self.grid_sampler.update(query_density_fnc, frame_id, global_step, occ_thre=0.0)
 
     def _query_field(self, pts, time_step, frame_id, fill_outside=False):
-        assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        # pts: Tensor with shape (n_pts, 3). Dtype=float32.
-        pts = pts.view(1, -1, 3).to(self.device)
-        pts_time = torch.full_like(pts[..., :1], time_step)
+        # assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
+        if frame_id.numel() == 1:
+            pts = pts.view(1, -1, 3).to(self.device)
+            pts_time = torch.full_like(pts[..., :1], time_step)
+        else:
+            # pts.shape (B,T,3), pts_time.shape (B,1), frame_id.shape (B)
+            pts_time = time_step.view(pts.shape[0], 1, 1).repeat(1, pts.shape[1], 1)
         sdf = self.dynamic_fields(pts, pts_time, frame_id, None, alpha_ratio=self.alpha_ratio, estimate_normals=False, estimate_color=False)['sdf'].squeeze().clone()
         if fill_outside:
             fill_value = 0.0
@@ -109,8 +112,8 @@ class Renderer(BaseModel):
 
     def isosurface(self, mesh_path, time_step, frame_id, resolution=None):
         assert time_step.numel() == 1 and frame_id.numel() == 1, 'Only support single time_step and frame_id'
-        bound_min = torch.tensor([-1.0, -1.0, -1.0], dtype=torch.float32)
-        bound_max = torch.tensor([ 1.0,  1.0,  1.0], dtype=torch.float32)
+        bound_min = self.scene_aabb.view(-1)[:3].cpu().float()
+        bound_max = self.scene_aabb.view(-1)[3:6].cpu().float()
         mesh = extract_geometry(
             bound_min,
             bound_max,
@@ -264,10 +267,12 @@ class Renderer(BaseModel):
             to_ret['rgb'] = to_ret['rgb'] + self.background_color.view(-1, 3).expand(to_ret['rgb'].shape)*(1.0 - to_ret['opacity'])
 
         if self.estimate_normals:
-            to_ret['normal'][to_ret['ray_mask']] = (normal * weights).sum(dim=1) # n_rays, 3
+            _normal = (normal * weights).sum(dim=1) # n_rays, 3
+            to_ret['normal'][to_ret['ray_mask']] = _normal
             if self.training:
                 to_ret['gradient_error'] = ((torch.linalg.norm(gradients_o, ord=2, dim=-1)-1.0)**2).mean()
-
+                to_ret['angle_error'] = torch.zeros_like(to_ret['opacity'])
+                to_ret['angle_error'][to_ret['ray_mask']] = torch.relu((rays_d[:, 0]*_normal).sum(-1, keepdim=True)) # n_rays, n_samples
         if self.training and 'proposal' in self.config.sampling.name:
             self.vars_in_forward["trans"] = trans.reshape(rays_o.shape[0], -1)
 

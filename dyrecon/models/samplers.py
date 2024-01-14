@@ -109,6 +109,8 @@ class ImportanceSampler(Sampler):
         self.n_importance = self.config.n_importance
         if isinstance(self.n_samples, int):
             self.n_samples = [self.n_samples]
+        if isinstance(self.n_importance, int):
+            self.n_importance = [self.n_importance]
 
     @property
     def total_samples(self):

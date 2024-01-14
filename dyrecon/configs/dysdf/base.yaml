@@ -5,7 +5,7 @@ seed: 42
 
 dataset:
   load_time_steps: 100
-  val_load_time_steps: 2
+  val_load_time_steps: 1
   dynamic_sequence: True
   train_split:
     - cam_train_1
@@ -109,6 +109,7 @@ system:
     dist: 0.0
     depth: 0.0
     sparse: 0.0
+    angle: 0.0 # angle loss from NDR
     loss_proposal: 1.0 # if the proposal net is used
   optimizer:
     name: Adam
