@@ -11,7 +11,7 @@
     ·
     <a target="_blank" href="https://vlg.inf.ethz.ch/team/Prof-Dr-Siyu-Tang.html"><strong>Siyu Tang</strong></a>
   </p>
-  <h2 align="center"></h2>
+  <h2 align="center">ICLR 2024 (spotlight)</h2>
   <div align="center"></div> 
 
   <p align="center">
